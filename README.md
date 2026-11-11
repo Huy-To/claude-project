@@ -27,7 +27,9 @@ Options:
 | `--model` | `claude-sonnet-5-5` | Claude model for the chat panel |
 
 Pick the chart timeframe (1m, 5m, 15m, 1H, 4H, 1D) with the buttons at the top; your
-choice is remembered. The liquidation levels don't depend on the timeframe: they're built
+choice is remembered. A countdown to the close of the current candle is shown next to the
+buttons and under the price label on the right axis (turn it off under Display →
+Candle countdown). Candles are aligned to UTC and the countdown uses your computer's clock. The liquidation levels don't depend on the timeframe: they're built
 from hourly open interest for older history and 5-minute open interest for the last 3 days.
 
 Stop it with Ctrl+C.

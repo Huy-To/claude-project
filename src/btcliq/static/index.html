@@ -26,6 +26,8 @@
   #tfs button { background: transparent; color: var(--muted); border: 0; padding: 5px 10px;
     font: inherit; cursor: pointer; border-right: 1px solid var(--line); }
   #tfs button:last-child { border-right: 0; }
+  #countdown { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 92px; }
+  #countdown b { color: var(--text); font-weight: 600; }
   #tfs button:hover { color: var(--text); background: #1f2630; }
   #tfs button.on { color: var(--text); background: #2a3340; font-weight: 600; }
   #status { margin-left: auto; color: var(--muted); font-size: 12px; }
@@ -232,6 +234,7 @@
   <h1>BTC Liquidation Levels</h1>
   <div id="price">—</div>
   <div id="tfs"></div>
+  <div id="countdown" title="Time left until the current candle closes"></div>
   <button class="btn" id="book-toggle" title="Show live order books">Order book</button>
   <button class="btn" id="opt-toggle" title="OKX BTC/USD options: chain and contract lookup">Options</button>
   <div class="stat"><b id="oi">—</b><span>Open interest</span></div>
@@ -321,6 +324,7 @@
     <div class="controls">
       <label>Heat contrast <input id="contrast" type="range" min="0.2" max="2" step="0.1" value="0.6"></label>
       <label>Hide below <input id="minpct" type="range" min="0" max="30" step="1" value="2"></label>
+      <label>Candle countdown <input id="showcount" type="checkbox" checked></label>
       <label>Level labels <input id="showlabels" type="checkbox" checked></label>
       <label>Side profile <input id="showprof" type="checkbox" checked></label>
       <label>Real liquidations <input id="showliq" type="checkbox" checked></label>
@@ -473,6 +477,37 @@ function xFor(ms) {
   const x = ts.timeToCoordinate(toT(t));
   return x ?? 0;
 }
+// ---------- candle countdown ----------
+// Time left until the current candle closes. Bars are aligned to UTC (OKX's 1D bars use UTC days).
+function countdownText() {
+  if (!S.tfMs) return '';
+  const now = Date.now();
+  const left = Math.max(0, Math.floor(now / S.tfMs) * S.tfMs + S.tfMs - now);
+  const t = Math.ceil(left / 1000), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+  const p2 = n => String(n).padStart(2, '0');
+  return h ? `${h}:${p2(m)}:${p2(sec)}` : `${p2(m)}:${p2(sec)}`;
+}
+function drawCountdown(ctx, paneW, paneH) {
+  if (!$('showcount').checked || !S.bars.length) return;
+  const last = S.bars.at(-1), y = candles.priceToCoordinate(last.close);
+  if (y == null || y < 0 || y > paneH) return;
+  const scaleW = chart.priceScale('right').width();
+  const text = countdownText(); if (!text) return;
+  const top = y + 10, hgt = 17;  // just under the price label, which is centred on y
+  ctx.save();
+  ctx.fillStyle = last.close >= last.open ? C('--up') : C('--down');
+  ctx.globalAlpha = 0.85;
+  ctx.fillRect(paneW + 1, top, scaleW - 1, hgt);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#fff'; ctx.font = '11px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, paneW + 7, top + hgt / 2 + 0.5);
+  ctx.restore();
+}
+setInterval(() => {
+  const el = $('countdown');
+  el.innerHTML = S.tf && S.tfMs ? `${S.tf} candle closes in <b>${countdownText()}</b>` : '';
+}, 250);
+
 function draw() {
   try { drawFrame(); } catch (e) { console.error(e); }
   requestAnimationFrame(draw);
@@ -536,6 +571,7 @@ function drawFrame() {
     }
   }
   lctx.restore();
+  drawCountdown(lctx, paneW, paneH);
 }
 requestAnimationFrame(draw);
 
