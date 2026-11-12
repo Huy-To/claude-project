@@ -21,3 +21,7 @@ def test_parse_written_dates_and_years():
         p = parse_query(q)
         assert p["expiry_dm"][:2] == (27, 11) and p["strike"] == 75000 and p["type"] == "C", (q, p)
     assert parse_query("75000 call expiring 27 nov 2026")["expiry_dm"] == (27, 11, 26)
+
+
+def test_first_type_wins():
+    assert parse_query("27nov 75k call for a put spread")["type"] == "C"

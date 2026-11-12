@@ -54,9 +54,9 @@ def parse_query(q: str) -> dict:
     tokens = [t for t in re.split(r"[\s\-_/]+", s) if t]
     for t in tokens:
         if t in ("C", "CALL", "CALLS"):
-            out["type"] = "C"
+            out.setdefault("type", "C")   # first mention wins
         elif t in ("P", "PUT", "PUTS"):
-            out["type"] = "P"
+            out.setdefault("type", "P")
         elif re.fullmatch(r"\d{6}", t) and t[2:4] <= "12":                 # YYMMDD
             out["expiry"] = t
         elif m := re.fullmatch(r"(\d{1,2})([A-Z]{3})(\d{2})?", t):           # 27NOV or 27NOV26
@@ -68,7 +68,7 @@ def parse_query(q: str) -> dict:
             if val >= 100 and not (1900 <= val <= 2100) and "strike" not in out:  # skip years
                 out["strike"] = val
             if m.group(3):
-                out["type"] = m.group(3)
+                out.setdefault("type", m.group(3))
     return out
 
 
@@ -255,7 +255,7 @@ class OptionsFeed:
             f"1 contract = {c['ct_mult']} BTC; breakeven at expiry ${be:,.0f}; forward {g(c['fwd'], '${:,.1f}')}",
         ]
 
-    async def context(self, message: str = "", selected: str | None = None) -> list[str]:
+    async def context(self, message: str = "", selected: str | None = None, extra=None) -> list[str]:
         """Options section for the chat: market summary, near-the-money table, and full
         details for any contract named in the message or open in the options panel."""
         snap = await self.chain("BTC-USD")
@@ -296,11 +296,14 @@ class OptionsFeed:
         text = (message or "").upper()
         exact_re = r"BTC-USD(?:_UM)?-\d{6}-\d+(?:\.\d+)?-[CP]"
         wanted += re.findall(exact_re, text)
-        # Loose mentions ("27nov 75k call"): parse what's left after removing exact names.
-        loose = re.sub(r"[^A-Z0-9._\-\s]", " ", re.sub(exact_re, " ", text))
-        pq = parse_query(loose)
-        if "strike" in pq and "type" in pq and ({"expiry", "expiry_dm"} & pq.keys()):
-            wanted.append(loose)
+        # Loose mentions ("27nov 75k call"): remove exact names, split into clauses, and parse
+        # each clause on its own so "a call ... and a put spread" yields both.
+        rest = re.sub(exact_re, " ", text)
+        for clause in re.split(r"[?!;,\n]|\.(?!\d)|\b(?:AND|OR|VS|VERSUS|AGAINST|THEN|ALSO|BUT)\b", rest):
+            loose = re.sub(r"[^A-Z0-9._\-\s]", " ", clause or "")
+            pq = parse_query(loose)
+            if "strike" in pq and "type" in pq and ({"expiry", "expiry_dm"} & pq.keys()):
+                wanted.append(loose)
         seen, details = set(), []
         for q in wanted[:5]:
             try:
@@ -311,6 +314,11 @@ class OptionsFeed:
                 seen.add(c["name"])
                 cidx = (await self.chain(c["family"]))["index"] or idx
                 desc = self.describe(c, cidx)
+                if extra:  # e.g. the power-law three-world check
+                    try:
+                        desc += extra(c, cidx)
+                    except Exception:
+                        pass
                 if c["name"] == selected:
                     desc[0] += " (open in the user's options panel)"
                 details += [""] + desc

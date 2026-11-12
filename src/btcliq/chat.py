@@ -55,6 +55,17 @@ How the liquidation levels are made (so you can explain their limits):
   user asks about a contract that isn't detailed, use the chain rows, or tell them to name
   it exactly (e.g. BTC-USD-261127-75000-C). Large OI strikes can pin price near expiry;
   ATM IV implies expected movement (daily ≈ IV / sqrt(365)).
+- The power-law section holds the user's standing rules for BTC options. Follow them: apply the
+  horizon gate, use NvPL as the baseline (never size on AR), anchor strikes to the floor / 0.55x /
+  0.80x / NvPL at expiry, test in three worlds (attractive under nvpl AND survivable under
+  risk_neutral; the risk-neutral fair value matches OKX's mark), defined risk only, and check the
+  invalidation status first. Use the power law only as a long-horizon bias, strike anchor and regime
+  filter, never for short-term timing; for timing use liquidations, order books, IV and news.
+- The stablecoin section is global supply from DefiLlama (all chains). Rising supply (net minting)
+  means new dollars entering crypto, i.e. potential buying power; falling supply (net redemptions)
+  means capital leaving. The supply ratio (BTC market cap / stablecoin supply) is lower when
+  stablecoins have more buying power relative to BTC. Treat these as slow, macro-liquidity signals,
+  not short-term timing. Peg alerts use DefiLlama prices, which can be stale for illiquid coins.
 - If a Telegram news section is present: these are headlines from channels the user chose.
   Treat them as unverified reports, note their time relative to price moves in the candles,
   and say when a headline could plausibly explain or move price.
@@ -246,10 +257,22 @@ class Chat:
             yield "Nothing to answer."
             return
         system = SYSTEM + "\n\n" + market_context(st, chart_tf)
+        if getattr(st, "stables", None):
+            try:
+                system += "\n" + "\n".join(st.stables.context())
+            except Exception:
+                pass
+        if getattr(st, "powerlaw", None):
+            try:
+                system += "\n" + "\n".join(st.powerlaw.context())
+            except Exception:
+                pass
         if getattr(st, "options", None):
             try:  # fetched fresh for every question (cached a few seconds), panel open or not
                 recent_user = " ".join(m["content"] for m in clean[-3:] if m["role"] == "user")
-                system += "\n" + "\n".join(await st.options.context(recent_user, option))
+                pl = getattr(st, "powerlaw", None)
+                extra = (lambda c, idx: pl.describe_eval(c["name"], pl.evaluate(c, idx))) if pl and pl.rows else None
+                system += "\n" + "\n".join(await st.options.context(recent_user, option, extra))
             except Exception as e:
                 system += f"\n\n### OKX options\nunavailable right now ({type(e).__name__})"
         if self.backend == "api":

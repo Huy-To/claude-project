@@ -16,6 +16,7 @@ import json
 import logging
 import time
 import webbrowser
+from datetime import datetime, time as dt_time, timezone
 from pathlib import Path
 
 import aiohttp
@@ -24,7 +25,10 @@ from aiohttp import web
 from .book import VENUES as BOOK_VENUES, BookFeed
 from .chat import DEFAULT_MODEL, Chat
 from .exchanges import TIMEFRAMES, Exchanges
+from .macro import MacroCalendar
 from .options import FAMILIES, OptionsFeed
+from .powerlaw import PowerLaw
+from .stables import Stablecoins
 from .telegram import TelegramMonitor
 from .model import LiqModel
 
@@ -55,6 +59,9 @@ class State:
         self.book: BookFeed | None = None
         self.news: TelegramMonitor | None = None
         self.options: OptionsFeed | None = None
+        self.powerlaw: PowerLaw | None = None
+        self.stables: Stablecoins | None = None
+        self.calendar: MacroCalendar | None = None
 
     @property
     def live_oi(self) -> float:
@@ -97,6 +104,9 @@ class State:
             "liqs": self.liqs[-2000:],
             "news": self.news.recent(200) if self.news else [],
             "channels": self.news.channel_list() if self.news else [],
+            "powerlaw": self.powerlaw.state() if self.powerlaw else {"ready": False},
+            "stables": self.stables.snapshot(compact=True) if self.stables else {"ready": False},
+            "calendar": self.calendar.snapshot() if self.calendar else {"ready": False},
             **{k: v for k, v in self.levels_msg().items() if k != "type"},
             **{k: v for k, v in self.venues_msg().items() if k != "type"},
         }
@@ -345,10 +355,73 @@ async def options_contract(req):
         if contract:
             out.update(await st.options.detail(contract["name"]))
             out["index"] = (await st.options.chain(contract["family"]))["index"]
+            if st.powerlaw and st.powerlaw.rows:
+                try:
+                    out["powerlaw"] = await asyncio.get_running_loop().run_in_executor(
+                        None, st.powerlaw.evaluate, contract, out["index"])
+                except Exception as e:
+                    out["powerlaw"] = {"error": f"{type(e).__name__}: {e}"}
         return web.json_response(out)
     except Exception as e:
         log.warning("options lookup failed: %s", e)
         return web.json_response({"error": f"Couldn't query OKX: {e}"}, status=502)
+
+
+MAX_DRAWINGS_BYTES = 2_000_000
+
+
+async def drawings_handler(req):
+    """Chart drawings (trend lines, fibs, ...), saved in data/drawings.json."""
+    st: State = req.app["state"]
+    path = Path(st.args.data_dir) / "drawings.json"
+    if req.method == "PUT":
+        raw = await req.read()
+        if len(raw) > MAX_DRAWINGS_BYTES:
+            raise web.HTTPRequestEntityTooLarge(max_size=MAX_DRAWINGS_BYTES, actual_size=len(raw))
+        try:
+            body = json.loads(raw)
+            assert isinstance(body.get("drawings"), list)
+        except (ValueError, AssertionError, AttributeError):
+            raise web.HTTPBadRequest(text="expected {\"drawings\": [...]}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"drawings": body["drawings"]}))
+        tmp.replace(path)  # atomic, so a crash mid-write can't corrupt saved drawings
+        return web.json_response({"saved": len(body["drawings"])})
+    try:
+        return web.json_response(json.loads(path.read_text()))
+    except (FileNotFoundError, ValueError):
+        return web.json_response({"drawings": []})
+
+
+async def stables_handler(req):
+    st: State = req.app["state"]
+    out = st.stables.snapshot() if st.stables else {"ready": False}
+    if st.powerlaw and st.powerlaw.rows:  # daily BTC closes for the overlay (Coin Metrics)
+        out["btc_history"] = [[int(datetime.combine(d, dt_time(), timezone.utc).timestamp() * 1000), px]
+                              for d, px in st.powerlaw.rows if d.year >= 2017]
+    return web.json_response(out)
+
+
+async def stables_coin_handler(req):
+    st: State = req.app["state"]
+    coin = req.query.get("id", "")
+    if not coin.isdigit():
+        raise web.HTTPBadRequest(text="id must be a DefiLlama stablecoin id")
+    try:
+        return web.json_response({"id": coin, "history": await st.stables.coin_history(coin)})
+    except Exception as e:
+        return web.json_response({"error": f"Couldn't load that coin's history: {e}"}, status=502)
+
+
+async def calendar_handler(req):
+    st: State = req.app["state"]
+    return web.json_response(st.calendar.snapshot() if st.calendar else {"ready": False})
+
+
+async def powerlaw_handler(req):
+    st: State = req.app["state"]
+    return web.json_response(st.powerlaw.state() if st.powerlaw else {"ready": False})
 
 
 async def chat_status(req):
@@ -396,6 +469,24 @@ async def start_background(app):
     app["ex"] = ex = Exchanges(session)
     app["book"] = st.book = BookFeed(session)
     st.options = OptionsFeed(session)
+    st.powerlaw = PowerLaw(session, Path(st.args.data_dir))
+
+    async def on_powerlaw(state):
+        await st.broadcast({"type": "powerlaw", "state": state})
+
+    st.powerlaw.on_update = on_powerlaw
+    st.stables = Stablecoins(session)
+
+    async def on_stables(snap):
+        await st.broadcast({"type": "stables", "data": snap})
+
+    st.stables.on_update = on_stables
+    st.calendar = MacroCalendar(session)
+
+    async def on_calendar(snap):
+        await st.broadcast({"type": "calendar", "data": snap})
+
+    st.calendar.on_update = on_calendar
     st.news = TelegramMonitor(session, Path(st.args.data_dir), st.args.telegram_seconds,
                               [c for c in st.args.telegram.split(",") if c.strip()])
 
@@ -409,6 +500,9 @@ async def start_background(app):
     await bootstrap(st, ex)
     app["tasks"] = [asyncio.create_task(f(st, ex)) for f in (tick_loop, oi_loop, liq_loop, prewarm_loop)]
     st.news.start()
+    st.powerlaw.start(lambda: st.price or None)
+    st.stables.start(lambda: st.price or None)
+    st.calendar.start()
     if st.news.channels:
         log.info("Watching Telegram: %s", ", ".join(c["name"] for c in st.news.channels.values()))
     url = f"http://localhost:{st.args.port}"
@@ -424,6 +518,12 @@ async def stop_background(app):
         await app["book"].stop()
     if app["state"].news:
         await app["state"].news.stop()
+    if app["state"].powerlaw:
+        await app["state"].powerlaw.stop()
+    if app["state"].stables:
+        await app["state"].stables.stop()
+    if app["state"].calendar:
+        await app["state"].calendar.stop()
     await app["session"].close()
 
 
@@ -468,6 +568,11 @@ def main(argv: list[str] | None = None) -> None:
     app.router.add_route("*", "/api/telegram", telegram_handler)
     app.router.add_get("/api/options/chain", options_chain)
     app.router.add_get("/api/options/contract", options_contract)
+    app.router.add_get("/api/powerlaw", powerlaw_handler)
+    app.router.add_get("/api/stables", stables_handler)
+    app.router.add_route("*", "/api/drawings", drawings_handler)
+    app.router.add_get("/api/stables/coin", stables_coin_handler)
+    app.router.add_get("/api/calendar", calendar_handler)
     app.router.add_get("/api/chat", chat_status)
     app.router.add_post("/api/chat", chat_handler)
     app.router.add_get("/ws", ws_handler)
