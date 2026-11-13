@@ -162,8 +162,15 @@ async def cancel_all(req):
     return web.json_response(await tr.cancel_all(source="ui"))
 
 
+KILL_WORD = "KILL"
+
+
 async def kill(req):
     b = await _body(req)
+    # The page sends the word you typed in its confirmation dialog. Refusing anything else means
+    # a stray click, a stale cached page or a script can't trip the kill switch without that step.
+    if str(b.get("confirm", "")).strip().upper() != KILL_WORD:
+        raise OrderInputError(f"Kill switch not confirmed: type {KILL_WORD} in the dialog to confirm")
     tr = _trader(req)
     tr.forget_history()
     return web.json_response(await tr.kill(str(b.get("reason", "")), source="ui"))

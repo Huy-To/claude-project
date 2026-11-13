@@ -419,6 +419,30 @@ def test_trade_routes_refuse_other_sites(tmp_path):
     run(go())
 
 
+def test_kill_route_needs_typed_confirmation(tmp_path):
+    """The browser's kill switch only fires with the word typed in its confirmation dialog."""
+    async def go():
+        app = web.Application()
+        trade_routes.setup(app)
+        tr, fake = make(tmp_path)
+        app["trader"] = tr
+        fake.pending = [{"instId": "BTC-USDT-SWAP", "ordId": str(i)} for i in range(3)]
+        async with TestClient(TestServer(app)) as c:
+            h = {"X-Btcliq-Trade": (await (await c.get("/api/trade/status")).json())["token"]}
+            for body in ({}, {"reason": "oops"}, {"confirm": ""}, {"confirm": "yes"}, {"confirm": "KIL"}, {"confirm": True}):
+                r = await c.post("/api/trade/kill", json=body, headers=h)
+                assert r.status == 400, body
+                assert "type KILL" in (await r.json())["error"]
+            assert tr.halt.state() is None                                    # nothing halted
+            assert not [p for p, _ in fake.sent if p.endswith("cancel-batch-orders")]   # nothing canceled
+            r = await c.post("/api/trade/kill", json={"reason": "news", "confirm": " kill "}, headers=h)
+            assert r.status == 200
+            d = await r.json()
+            assert d["canceled"] == 3 and d["halted"]["reason"] == "news" and d["halted"]["source"] == "ui"
+            assert tr.halt.state()["reason"] == "news"
+    run(go())
+
+
 # ---------- "ask" rules: notify and let the user choose ----------
 
 ASK_TOML = """enabled = true

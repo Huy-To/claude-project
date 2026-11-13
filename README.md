@@ -288,7 +288,8 @@ then a confirmation that re-checks everything with fresh prices before sending.
   dialog: the exact order, its numbers and every rail (✓ or ✕). A single ✕ disables Confirm.
   Option rules set to *ask* show in amber with a **Place anyway** box. The preview expires
   after a minute.
-- **Kill switch** (the ticket's title bar): halts trading and cancels every open order.
+- **Kill switch** (the ticket's title bar): halts trading and cancels every open order. It asks
+  first: type `KILL` in its dialog to unlock the button (Esc or Cancel backs out).
   Positions stay open. **Resume trading** lifts it. **Today's limits** at the bottom shows
   today's opening orders and volume against your daily caps.
 

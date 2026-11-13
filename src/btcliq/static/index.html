@@ -853,6 +853,20 @@
   .btn.go-buy:hover { background: #4cdc70; color: #04210e; }
   .btn.go-sell { height: 34px; background: var(--sell); color: #2a0503; border-color: transparent; font-weight: 700; }
   .btn.go-sell:hover { background: #ff5d53; color: #2a0503; }
+  /* kill switch confirmation: type KILL to unlock the button */
+  dialog.confirm.kill { width: 420px; border-color: rgba(255,90,79,.45); }
+  .kd-head { color: var(--down); }
+  .kd-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: var(--fs-2); line-height: 1.5; }
+  .kd-list .muted { color: var(--muted); }
+  .kd-type { display: grid; gap: 6px; font-size: var(--fs-2); }
+  .kd-type b { color: var(--down); letter-spacing: .08em; }
+  .kd-type .input { height: 36px; font: inherit; font-size: var(--fs-4); font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+  .kd-type .input.match { border-color: var(--down); box-shadow: 0 0 0 3px var(--down-soft); }
+  .btn.go-kill { height: 34px; background: var(--down); color: #2a0503; border-color: transparent; font-weight: 700; }
+  .btn.go-kill:hover { background: #ff5d53; color: #2a0503; }
+  .btn.go-kill:disabled { background: transparent; color: var(--down); border-color: rgba(255,90,79,.45); }
+  .kd-esc { white-space: nowrap; }
+  @media (max-width: 480px) { .kd-esc { display: none; } }
 
   /* ---------- small screens: one column, the page scrolls ---------- */
   @media (max-width: 900px) {
@@ -1295,6 +1309,25 @@
   <div class="cf-foot"><span class="muted" id="cf-exp"></span><span class="grow"></span>
     <button class="btn" id="cf-cancel" type="button">Cancel</button>
     <button class="btn" id="cf-ok" type="button">Confirm</button></div>
+</dialog>
+
+<dialog class="confirm kill" id="tr-killdlg" aria-labelledby="kd-title" aria-describedby="kd-main">
+  <form id="kd-form" autocomplete="off">
+    <div class="cf-head kd-head"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg><span id="kd-title">Kill switch</span>
+      <span class="pill live" id="kd-env">Live</span></div>
+    <div class="cf-main" id="kd-main"></div>
+    <div class="cf-body">
+      <ul class="kd-list" id="kd-list"></ul>
+      <label class="kd-type" for="kd-word">
+        <span>Type <b>KILL</b> to confirm</span>
+        <input class="input" id="kd-word" name="kd-word" autocomplete="off" autocapitalize="characters" spellcheck="false"
+               maxlength="8" aria-describedby="kd-err"></label>
+      <div class="err" id="kd-err" role="alert"></div>
+    </div>
+    <div class="cf-foot"><span class="muted kd-esc">Esc cancels</span><span class="grow"></span>
+      <button class="btn" id="kd-cancel" type="button">Cancel</button>
+      <button class="btn go-kill" id="kd-ok" type="submit" disabled>Halt and cancel orders</button></div>
+  </form>
 </dialog>
 
 <script>
@@ -4273,16 +4306,52 @@ $('tr-form').addEventListener('keydown', e => {
 $('cf-cancel').onclick = () => $('tr-confirm').close();
 $('cf-ok').onclick = trPlace;
 $('tr-confirm').addEventListener('close', () => { clearInterval(TR.expTimer); TR.preview = null; });
-$('tr-kill').onclick = async () => {
-  const n = TR.acct?.orders?.length || 0;
-  if (!confirm(`Kill switch: halt trading and cancel ${n ? `all ${n}` : 'any'} open orders?\n\nPositions stay open. New orders are refused until you resume`
-               + (TR.st?.rails?.limits?.halt?.allow_closing ? ' (closing orders still go through).' : '.'))) return;
+// Kill switch: a second step before it fires. You type KILL (any case) to unlock the button, and the
+// server refuses a kill request that doesn't carry that word, so a stray click can't trip it.
+const KILL_WORD = 'KILL';
+const killTyped = () => $('kd-word').value.trim().toUpperCase() === KILL_WORD;
+function killSync() {
+  const ok = killTyped();
+  $('kd-word').classList.toggle('match', ok);
+  $('kd-ok').disabled = !ok || TR.killing;
+}
+function trKillOpen() {
+  const st = TR.st, n = TR.acct?.orders?.length || 0;
+  const closing = st?.rails?.limits?.halt?.allow_closing;
+  $('kd-env').className = 'pill ' + (st?.env === 'demo' ? 'demo' : 'live');
+  $('kd-env').textContent = st?.env === 'demo' ? 'Demo' : 'Live';
+  $('kd-main').textContent = st?.halted
+    ? `Trading is already halted. Cancel ${n ? `all ${n}` : 'any'} open order${n === 1 ? '' : 's'}?`
+    : `Halt trading and cancel ${n ? `all ${n}` : 'any'} open order${n === 1 ? '' : 's'}?`;
+  $('kd-list').innerHTML = [
+    `Cancels <b>every open order</b> on the OKX account${n ? ` (${n} right now)` : ''}.`,
+    `New orders are refused until you press <b>Resume trading</b>${closing ? '. Orders that close positions still go through' : ''}.`,
+    `<span class="muted">Positions stay open. Close them with the Close button next to each position, or in OKX.</span>`,
+  ].map(x => `<li>${x}</li>`).join('');
+  $('kd-word').value = ''; $('kd-err').textContent = '';
+  $('kd-ok').textContent = 'Halt and cancel orders';
+  killSync();
+  const dlg = $('tr-killdlg');
+  if (!dlg.open) dlg.showModal();
+  $('kd-word').focus();
+}
+async function trKill(e) {
+  e?.preventDefault();
+  if (!killTyped() || TR.killing) return;
+  TR.killing = true; killSync(); $('kd-ok').textContent = 'Halting…'; $('kd-err').textContent = '';
   try {
-    const r = await trApi('kill', { reason: 'Kill switch (browser)' });
-    toast(`⛔ Trading halted. Canceled ${r.canceled ?? 0} of ${r.found ?? 0} open orders.`, 'long');
-  } catch (e) { $('tr-err').textContent = e.message; }
-  trRefresh();
-};
+    const r = await trApi('kill', { reason: 'Kill switch (browser)', confirm: KILL_WORD });
+    $('tr-killdlg').close();
+    toast(`⛔ Trading halted. Canceled ${r.canceled ?? 0} of ${r.found ?? 0} open orders.`
+          + (r.errors?.length ? ` Errors: ${r.errors.join('; ')}` : ''), 'long');
+  } catch (err) {
+    $('kd-err').textContent = err.message; $('kd-ok').textContent = 'Try again';
+  } finally { TR.killing = false; killSync(); trRefresh(); }
+}
+$('tr-kill').onclick = trKillOpen;
+$('kd-word').addEventListener('input', killSync);
+$('kd-form').addEventListener('submit', trKill);
+$('kd-cancel').onclick = () => $('tr-killdlg').close();
 { const el = $('showtrade'), v = store.get('showTrade', null);
   if (v != null) el.checked = v === '1';
   el.addEventListener('change', () => { store.set('showTrade', el.checked ? '1' : '0'); trLines(); }); }

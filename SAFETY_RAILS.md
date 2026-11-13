@@ -10,7 +10,7 @@ sets up the protections around that, in the order an order meets them:
 | 2. IP allowlist | Anyone who steals the key, from any other machine | okx.com → API |
 | 3. Limits file | Orders that are too big, badly priced, too frequent, or over your daily loss | `trading.toml` |
 | 4. Preview and confirm | Orders you didn't mean: you see cost, worst case and every check before sending | browser dialog / `preview` then `place` |
-| 5. Kill switch | Everything new, at once, and cancels open orders | Kill button on the Order ticket / `btcliq-trade kill` |
+| 5. Kill switch | Everything new, at once, and cancels open orders | Kill button on the Order ticket (type `KILL` to confirm) / `btcliq-trade kill` |
 | 6. Journal | Nothing, but records every attempt for review | `data/trade_journal.jsonl` |
 
 If the limits file is missing or has a mistake in it, **trading is off**. btcliq never sends
@@ -334,6 +334,12 @@ Any of these halts trading and cancels **every open order on the account**:
 - `btcliq-trade kill --reason "CPI spike"`,
 - or, if btcliq isn't running: `touch data/TRADING_HALTED` (halts only; it can't cancel orders without btcliq).
 
+The **Kill** button doesn't fire on one click. It opens a dialog that shows how many open orders
+will be canceled, and its button stays locked until you type `KILL` (any case; Enter then
+confirms, Esc backs out). The server checks this too: `/api/trade/kill` refuses a request that
+doesn't carry the typed word, so a stray click or an old cached page can't trip it. The
+command line has no extra prompt, so the trading agent can still halt in one step.
+
 While halted, new opening orders are refused everywhere, browser and command line alike, until you
 resume. Closing orders still go through unless `[halt] allow_closing = false`. Resume with the
 **Resume trading** button, `btcliq-trade resume`, or by deleting `data/TRADING_HALTED`.
@@ -394,7 +400,8 @@ Suggested rules for the agent's brief:
    and as a dashed line on the chart, then cancel it with ×.
 4. Try to break a rule on purpose: set the price 10% away and preview. You should see a ✕ for the
    price band and a disabled Confirm button.
-5. Press the **Kill switch**, check the halt banner, then **Resume trading**.
+5. Press the **Kill switch**: the button in its dialog stays locked until you type `KILL`. Confirm,
+   check the halt banner, then **Resume trading**.
 
 ## 8. What the rails don't cover
 
