@@ -1,0 +1,57 @@
+# btcliq safety rails: copy this file to trading.toml and edit it.
+#
+#   cp trading.example.toml trading.toml
+#
+# Every order (browser or btcliq-trade) is checked against these limits when it's previewed
+# and again right before it's sent. Any failed check blocks the order.
+# - No trading.toml, a typo in a setting name or a bad value: trading stays off.
+# - Changes apply on the next order; no restart needed.
+# - Set a number to "off" to stop enforcing it (e.g. max_loss_usd = "off").
+# - Closing orders (ones that only shrink a position) skip the halt, the daily caps and the
+#   leverage/position caps, so you can always get out. Size and price limits still apply.
+# SAFETY_RAILS.md explains each setting with examples.
+
+enabled = true                                   # master switch: false blocks every order
+instruments = ["OPTION", "SWAP", "FUTURES", "SPOT"]   # BTC only, whatever you list here
+
+[order]                     # every order
+max_notional_usd = 2000     # underlying value of one order (options: contracts × 0.01 BTC × index)
+price_band_pct = 3          # limit price must be within ±3% of the mark price (fat-finger guard)
+allow_market_orders = true  # spot, perps, futures only; OKX has no market orders for options
+max_open_orders = 10        # resting orders on the account before a new opening order is refused
+cooldown_seconds = 3        # minimum gap between two orders
+preview_ttl_seconds = 60    # a preview must be confirmed within this many seconds
+
+[daily]                     # resets at 00:00 UTC
+max_orders = 20             # opening orders placed through btcliq today
+max_notional_usd = 10000    # total value of today's opening orders
+max_loss_usd = 500          # realized P&L + fees today (all of OKX, from your fills); opening orders stop below -500
+
+[option]
+max_contracts = 5           # per order; 1 contract = 0.01 BTC
+max_premium_usd = 500       # premium paid or received by one order
+price_band_pct = 30         # option quotes are wide, so a wider band than [order]
+allow_selling_to_open = false   # true lets you write (short) options: large or unlimited risk
+max_position_contracts = 20     # per contract, after the order fills
+ask = []                        # option rules that ask "place anyway?" instead of blocking, e.g.
+                                # ["price_band_pct", "daily.max_loss_usd", "option.allow_selling_to_open"]
+
+[swap]                      # perpetuals: BTC-USDT-SWAP (0.01 BTC/contract), BTC-USD-SWAP ($100/contract)
+max_order_usd = "off"       # a tighter per-order cap than [order], if you want one
+max_leverage = 3            # refuse new orders while leverage on the instrument is above this
+max_position_usd = 5000     # position value after the order fills
+
+[futures]                   # dated futures: BTC-USD-YYMMDD ($100/contract)
+max_order_usd = "off"
+max_leverage = 3
+max_position_usd = 5000
+
+[spot]                      # BTC-USDT, BTC-USDC (size in BTC)
+max_order_usd = "off"
+
+[halt]
+allow_closing = true        # while halted (kill switch), closing orders still go through
+
+[account]
+derivatives_margin = "cross"   # cross or isolated, for options, perps and futures
+spot_mode = "auto"             # auto: cash in Spot/Futures mode, cross in multi-currency/portfolio margin
