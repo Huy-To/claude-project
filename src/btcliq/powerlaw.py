@@ -24,7 +24,8 @@ import aiohttp
 from . import powerlaw_calc as pl
 
 log = logging.getLogger("btcliq")
-SEED_CACHE = Path.home() / "Desktop/claude-project/btc-powerlaw/data/btc_daily.csv"
+# The btc-powerlaw project sits next to this one (../btc-powerlaw); its cache seeds ours if present.
+SEED_CACHE = Path(__file__).resolve().parents[3] / "btc-powerlaw" / "data" / "btc_daily.csv"
 REFRESH_SECONDS = 60          # recompute state with the live index
 DATA_REFRESH_SECONDS = 3600   # top up daily closes from Coin Metrics
 

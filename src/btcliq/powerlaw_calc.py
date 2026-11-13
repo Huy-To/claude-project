@@ -1,5 +1,5 @@
 # Vendored copy of btc-powerlaw/powerlaw.py (unchanged below this header) so btcliq is self-contained.
-# Source: ~/Desktop/claude-project/btc-powerlaw/powerlaw.py. btcliq.powerlaw sets CACHE to btcliq/data/.
+# Source: ../btc-powerlaw/powerlaw.py (the sibling btc-powerlaw project). btcliq.powerlaw sets CACHE to btcliq/data/.
 #!/usr/bin/env python3
 """
 btc-powerlaw: Bitcoin Power Law (Santostasi) state, forward levels and option-probability calculator.

@@ -6,7 +6,7 @@ open interest across several exchanges.
 ## Run
 
 ```bash
-cd ~/Desktop/claude-project/btcliq
+cd btcliq              # this project folder
 source .venv/bin/activate
 btcliq --open          # http://localhost:8050
 ```
