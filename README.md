@@ -35,19 +35,22 @@ from hourly open interest for older history and 5-minute open interest for the l
 **Heatmap** above the chart (or the **L** key) shows or hides the estimated liquidation
 heatmap, its labels and the side profile. **Layers** next to it holds the other chart
 settings: heat contrast, hiding small clusters, labels, side profile, real liquidations, book
-depth, power-law bands, session bands, calendar events, the candle countdown and the market
-hours row. All of them are remembered.
+depth, power-law bands, session bands, calendar events, your orders and positions, your fills,
+the candle countdown and the market hours row. All of them are remembered.
 
 Stop it with Ctrl+C.
 
 ## Screen layout
 
-- **Top bar:** price (it flashes on each tick), total open interest, estimated long
-  liquidations within 3% below price (▼) and short liquidations within 3% above (▲), the
-  power-law zone (click it for the details) and the connection status.
-- **Views:** Chart, Options and Stablecoins tabs sit above the main area. Each view's
-  controls sit next to the tabs. Esc goes back to the chart.
-- **Market hours** (the row under the view tabs, in every view):
+The look is "Titanium": warm graphite surfaces, the JetBrains Mono font (bundled in
+`src/btcliq/static/fonts/`, SIL Open Font License), uppercase panel titles and rounded cards.
+
+- **Top bar:** price (it flashes on each tick) with its change over the last 24 hours, total
+  open interest, estimated long liquidations within 3% below price (▼) and short liquidations
+  within 3% above (▲), the power-law zone (click it to jump to the Power law panel), the
+  **Chart / Options / Stablecoins** switch, the **Panels** button and the connection status.
+  Esc goes back to the chart.
+- **Market hours** (the row under the top bar, in every view):
   - A bar of the trading sessions over the last 6 and next 18 hours (Asia, London, New York;
     brighter where they overlap; the blue line is now), with the open sessions and when the
     next one starts. Sessions use forex hours: Asia 9:00–18:00 Tokyo time, London 8:00–17:00,
@@ -68,22 +71,36 @@ Stop it with Ctrl+C.
 - **Calendar events:** on 1m to 1H charts, each high-impact event from the calendar gets a
   dashed amber line with a short label along the bottom (CPI, FOMC, Jobs), so you can see
   how price reacted (Layers → Calendar events).
-- **Side panel:** Book, Market, News and Claude tabs, in one full-height section to start
-  with (Claude last). It's yours to rearrange:
-  - Drag a tab to reorder it. Drop it on the panel's lower half (or right half, when docked
-    at the bottom) to split the panel into two sections, e.g. Book on top and News below;
-    drag tabs between the sections afterwards.
-  - Drag the panel button (top right of the panel) onto the left, right or bottom edge to
-    dock the panel there. Clicking it gives the same choices plus **Reset panel layout**.
-  - Drag the panel's edge, or the line between its sections, to resize. Double-click
-    either to reset it.
-  - All of this is remembered. In windows narrower than 1000px the panel sits under the
-    chart; below 700px it becomes a single tab bar.
+- **Chart card:** the timeframes, candle countdown, Heatmap and Layers sit in the card's own
+  toolbar, with the drawing tools down its left edge. Options and Stablecoins open inside the
+  same card, so the panels and your account tables stay in view.
+- **Account tables** (under the chart): Positions, Open orders, Trade history, Order history,
+  Funding history and Balances from your OKX account. See [Trading on OKX](#trading-on-okx).
+  Drag the gap above them to change their height (double-click resets it); the arrow on the
+  right hides them.
+- **Panels** (the column beside the chart): Order book, Order ticket, Liquidation levels,
+  Calendar, News, Exchanges, Power law and Claude (collapsed to start with). Each one is a card
+  you can arrange, like worldmonitor.app's panels:
+  - **Move:** grab a panel by its title (or any empty part of it) and drop it; a glowing bar
+    shows where it lands, and Esc cancels.
+  - **Resize:** drag a panel's bottom edge to make it taller or shorter (it snaps to rows).
+    Drag the gap between the chart and the panels to widen the column; from about 620px it
+    holds two columns, and a panel's right edge then makes it one or two columns wide.
+    Double-click any edge to reset it.
+  - **Collapse** with the arrow in the title bar (or double-click the title). **Hide** with ×.
+  - The **Panels** button in the top bar lists every panel: show or hide it, move it up or
+    down (handy from the keyboard), put the column on the left or right, or **Reset layout**.
+  - All of it is remembered. Under 900px wide everything stacks in one scrolling column.
+- **Live touches:** a pulsing green dot on panels whose data is streaming (amber when stale),
+  prices and new rows flash briefly, counts bump when news or orders arrive, and a panel glows
+  when something lands: gold on Liquidation levels for a big liquidation, amber on News for a
+  keyword match and on Calendar for a heads-up. Your system's reduced-motion setting turns
+  the motion off.
 - **Colors** each mean one thing: green and red are direction (candles, bids and asks,
-  calls and puts, gains and losses); gold is estimated liquidation size, dim for small
-  clusters and bright for the largest on screen; blue is your selection and "you are here"
-  (the index line, a strike you're showing); amber needs attention (warnings, keyword
-  matches); violet is the power-law floor and bands.
+  buys and sells, calls and puts, gains and losses); gold is estimated liquidation size, dim
+  for small clusters and bright for the largest on screen; steel blue is the interface itself
+  (selection, focus, "you are here" lines); amber needs attention (warnings, limits, keyword
+  matches, high-impact events); violet is the power-law floor and bands.
 - **Real liquidations:** dots on candles are real OKX liquidations of $50K or more: red
   under the candle when longs were liquidated (price fell), green over it when shorts were
   (price rose), with 💥 from $1M. A short notice also pops up when one of $250K or more
@@ -143,7 +160,7 @@ btcliq includes Giovanni Santostasi's Bitcoin power law, using the calculator fr
 rules in `btc-powerlaw/POWER_LAW_BRIEF.md`. Use it as the brief says: a long-horizon
 bias, strike anchor and regime filter, never a short-term timing signal.
 
-- **Market tab → Power law** (or click the zone in the top bar): zone (🚨 Below floor,
+- **Power law panel** (or click the zone in the top bar): zone (🚨 Below floor,
   🧊 Deep value, ❄️ Value, ⚖️ Fair, 🔥 Extended, 🫧 Bubble), price / SP26 trend, the floor
   (0.42× trend) and how far above it price is, alternative floors, the flat-price test date,
   REFIT exponent, realized vol, the zone's menu of structures, and the **invalidation
@@ -166,10 +183,9 @@ bias, strike anchor and regime filter, never a short-term timing signal.
 Daily closes come from Coin Metrics and are cached in `data/btc_daily.csv` (seeded from the
 btc-powerlaw project's cache if present).
 
-## Calendar (Market tab)
+## Calendar
 
-The **Calendar** section at the bottom of the Market tab lists what's scheduled to move the
-market: Fed meetings and speeches, the President's schedule, and the big US data releases.
+The **Calendar** panel lists what's scheduled to move the market: Fed meetings and speeches, the President's schedule, and the big US data releases.
 
 - **Next:** the next high-impact event, with a countdown. The same countdown sits at the end
   of the market hours row.
@@ -179,8 +195,9 @@ market: Fed meetings and speeches, the President's schedule, and the big US data
   bars), amber for high impact. Past events from today are dimmed. This week's data releases
   show the forecast and previous values. Fed speeches with a live stream have a link.
 - **Filters:** All, Fed, White House or Data (remembered).
-- **Heads-up** (the switch next to the title): a notice in the app 15 minutes before each
-  high-impact event, once per event. It only shows while btcliq is open in your browser.
+- **Heads-up** (the bell switch in the panel's title bar): a notice in the app 15 minutes before
+  each high-impact event, once per event, and the panel glows amber. It only shows while btcliq
+  is open in your browser.
 
 **Impact.** High: FOMC rate decisions, CPI, the jobs report, PCE inflation, the GDP advance
 estimate, the Fed Chair speaking or testifying, whatever ForexFactory rates high that week,
@@ -238,32 +255,67 @@ strikes with the most open interest).
 
 ## Trading on OKX
 
-The **Trade** tab (side panel) and the `btcliq-trade` command place real orders on your OKX
-account: BTC options, perpetuals, dated futures and spot. Both go through the same
-**safety rails**, your limits in `trading.toml`, and every order takes two steps: a preview showing
-the order value, premium, fees, worst case and each limit check, then a confirmation that
-re-checks everything with fresh prices before sending.
+The **Order ticket** panel, the account tables under the chart and the `btcliq-trade` command
+place real orders on your OKX account: BTC options, perpetuals, dated futures and spot. All of
+them go through the same **safety rails**, your limits in `trading.toml`, and every order takes
+two steps: a preview showing the order value, premium, fees, worst case and each limit check,
+then a confirmation that re-checks everything with fresh prices before sending.
 
 **Setup (once):** create an OKX API key with **Read + Trade** only, bound to your IP; add
 `OKX_API_KEY`, `OKX_API_SECRET` and `OKX_API_PASSPHRASE` to `.env`; run
 `cp trading.example.toml trading.toml` and set your limits; restart btcliq.
 **[SAFETY_RAILS.md](SAFETY_RAILS.md) walks through every step and setting, with example profiles.**
 
-- **Order ticket:** type or pick an instrument (the options contract card has a **Trade** button
-  that fills it in), choose buy or sell, limit / post-only / IOC / market, price (Bid, Mid, Ask and
-  Mark fill it), size in contracts (BTC for spot) and *Reduce only* to close. The line under the size
-  shows what it's worth in BTC and USD, plus the premium for options.
-- **Confirm dialog:** the exact order, its numbers and every rail (✓ or ✕). A single ✕ disables
-  Confirm. Option rules you've set to *ask* (`[option] ask` in `trading.toml`) show in amber with a
-  **Place anyway** box instead: Confirm unlocks once you tick each one. The preview expires after a minute.
-- **Positions, open orders, balances** refresh every few seconds while the tab is open. **Close**
-  fills the ticket with an order that closes that position; × cancels an order. The tab's badge
-  counts open orders.
+**Order ticket**, top to bottom:
+
+- **Instrument:** type one or pick it from the list; the last few you used sit under the box
+  as chips. Below: its live bid, mark and ask, and your position in it, if you hold one.
+- **Buy / Long or Sell / Short:** the big switch. Its color carries into the slider and the
+  button, so the whole ticket shows which way you're trading (just Buy and Sell for spot and
+  options). With the ticket focused, B and S switch sides.
+- **Type:** Limit, Market (not for options), Post-only or IOC.
+- **Price:** Bid, Mid, Ask and Mark fill it. Clicking a row in the Order book panel, or
+  Alt+clicking the chart, puts that price in the ticket (BTC perpetuals and spot).
+- **Size** and the **percent slider**, OKX-style: drag it, use the arrow keys, or pick 0, 25%,
+  50%, 75% or Max. 100% is the most OKX lets you open with your balance (with *Reduce only*,
+  the position you can close). The **amber mark** is where your safety rails stop you (for
+  example the per-order cap); past it the fill turns amber and the order is blocked, or for
+  option rules you've set to *ask*, needs your OK.
+- **Live summary:** order value, premium, margin, fee, breakeven, the most you can lose and
+  your position after, plus **every rail check** ("Passes every safety rail", or the rule that
+  blocks it). It updates a moment after you stop typing, without placing anything.
+- **The button says exactly what happens** ("Buy / Long 0.25 contracts"), then the confirm
+  dialog: the exact order, its numbers and every rail (✓ or ✕). A single ✕ disables Confirm.
+  Option rules set to *ask* show in amber with a **Place anyway** box. The preview expires
+  after a minute.
+- **Kill switch** (the ticket's title bar): halts trading and cancels every open order.
+  Positions stay open. **Resume trading** lifts it. **Today's limits** at the bottom shows
+  today's opening orders and volume against your daily caps.
+
+**Account tables** (under the chart; refreshed every 4 seconds while open):
+
+- **Positions:** size, value, entry, mark, PnL in dollars with ROE, liquidation price,
+  breakeven and, for options, delta and theta per day.
+  - **Close** opens a small panel by the row: close 25, 50, 75 or 100%, at market (options:
+    limit at the mid), with the realized PnL and the rail check, then **Preview close** goes
+    to the usual confirm dialog.
+  - **⋯** has: close at a limit price, add to position, show strike and breakeven (options) or
+    entry and liquidation (perps) on the chart, open it in the ticket, copy the details.
+  - **Close all** (top right) lists every position first; each close still goes through the
+    rails, and any that need your OK are left for you to close from their row.
+- **Open orders:** click a price or size to change it in place (Enter saves, Esc cancels; the
+  rails check the new price first), or drag the order's line on the chart and confirm.
+  **Cancel** takes one click; the notice that follows offers **Place again**, which only fills
+  the ticket. **Cancel all** asks first.
+- **Trade history, Order history, Funding history:** the last 3 months from OKX, loaded when
+  you open the tab. Filter by type, side and instrument; **Aggregate** merges the partial fills
+  of one order; **Export CSV** saves what's shown. Funding shows each payment with the rate
+  OKX settled at.
+- **Balances:** equity, available, in orders, USD value and unrealized PnL per currency.
+  btcliq's key can read and trade but can't move funds.
 - **On the chart:** your open orders on BTC perps and spot are dashed lines (green buy, red sell);
-  positions show their entry (blue) and liquidation price (amber). Layers → My orders and positions.
-- **Kill switch** (top of the tab): halts trading and cancels every open order. Positions stay
-  open. **Resume trading** lifts it.
-- **Today's limits** shows today's opening orders and volume against your daily caps.
+  positions show their entry (steel blue) and liquidation price (amber); your fills are arrows on
+  the candles (B under, S over). Layers → My orders and positions, My fills.
 
 From a terminal or your Claude Code trading session (JSON output; `--text` for readable lines):
 
@@ -279,12 +331,13 @@ Every order attempt, cancel and halt is logged to `data/trade_journal.jsonl`.
 
 ## Telegram news
 
-Open the **News** tab in the side panel to follow public Telegram channels.
+The **News** panel follows public Telegram channels.
 
 - **Add** a channel by name (`WatcherGuru`), `@name` or link (`https://t.me/WalterBloomberg`).
   It's checked before it's saved. Click a channel to show only its posts; **×** stops watching it.
-- New posts show up live (each channel is checked every 30 seconds). While the News tab
-  isn't showing, it counts how many arrived.
+- New posts show up live (each channel is checked every 30 seconds). While the News panel is
+  collapsed, hidden or scrolled out of view, its title counts how many arrived. A keyword
+  match makes the panel glow amber.
 - **Highlight keywords** (comma-separated) marks matching posts in amber with 🚨. **Alerts** can send a
   desktop notification for keyword matches or for every new post (your browser asks first).
 - **Ask Claude** on a post sends it to the chat with the chart data, to ask how it could
@@ -296,12 +349,13 @@ Channel list: `data/telegram.json`. Post history: `data/news.db` (SQLite), kept 
 
 ## Order books
 
-The **Book** tab in the side panel is a live ladder of resting orders, merged from
+The **Order book** panel is a live ladder of resting orders, merged from
 OKX, Hyperliquid, Deribit, Kraken (perpetuals) and Coinbase, Bitfinex (spot), with sizes
-in BTC. Binance and Bybit books aren't available from the US. In a short, wide section
-(for example with the panel docked at the bottom) bids and asks sit side by side.
+in BTC. Binance and Bybit books aren't available from the US. In a short, wide panel
+(two columns wide and not very tall) bids and asks sit side by side.
 
-- **Group** sets the price bucket ($0.5 to $250). Hover a row to see each venue's share.
+- **Group** sets the price bucket ($0.5 to $250). Hover a row to see each venue's share;
+  click it to put that price in the order ticket.
 - **Venue chips** turn venues on and off; the dot is green when that venue's book is fresh.
 - **Align** shifts each venue's book so its mid matches OKX's. Spot and perpetual prices
   differ by tens of dollars, so without this the merged book shows bids above asks.
@@ -309,13 +363,13 @@ in BTC. Binance and Bybit books aren't available from the US. In a short, wide s
 - **Book depth** (Layers) draws resting bids and asks as bars from the chart's left edge,
   next to the liquidation levels, with bucket size following zoom.
 
-Books are polled over REST (every 1 to 3 seconds per venue) and only while the Book tab is
-showing or the depth overlay is on. Resting orders are real but can be pulled at any moment.
+Books are polled over REST (every 1 to 3 seconds per venue) and only while the Order book
+panel is on screen or the depth overlay is on. Resting orders are real but can be pulled at any moment.
 
 ## Ask Claude (chat panel)
 
-The **Claude** tab (the last tab of the side panel to start with) is a chat with Claude.
-Asking about a post or a contract opens it if it's hidden. Each question is sent with a fresh
+The **Claude** panel (last in the column, collapsed to start with) is a chat with Claude.
+Asking about a post or a contract opens and expands it. Each question is sent with a fresh
 snapshot of what the chart shows (price, open interest per exchange, the biggest estimated
 liquidation levels, recent real liquidations, and recent 15m/1H/1D candles), so you can
 ask things like "where are the biggest clusters?" or "summarize today's move".
@@ -342,7 +396,7 @@ Your conversation is kept in the browser until you press Clear.
 
 All public, no keys. Binance and Bybit block US connections, so their open interest comes
 from CoinGecko instead (refreshed every 2 minutes; CoinGecko's own data is roughly 10 minutes
-old for Binance and up to ~1.5 hours for Bybit; the Market tab shows the age).
+old for Binance and up to ~1.5 hours for Bybit; the Exchanges panel shows the age).
 
 | Venue | Used for |
 |---|---|
@@ -352,7 +406,8 @@ old for Binance and up to ~1.5 hours for Bybit; the Market tab shows the age).
 | Binance, Bybit (via CoinGecko) | Open interest, for the market's total size |
 
 The calendar's sources (Federal Reserve, Roll Call Factbase, BEA, ForexFactory) are listed
-under [Calendar](#calendar-market-tab).
+under [Calendar](#calendar). Your positions, orders, fills, order history, funding payments
+and balances come from OKX's private API with your own key (see [Trading on OKX](#trading-on-okx)).
 
 ## How the levels are estimated
 
@@ -388,6 +443,12 @@ src/btcliq/
   powerlaw.py    power-law state, invalidation, three-world option checks
   stables.py     global stablecoin supply (DefiLlama)
   macro.py       calendar: Fed, White House schedule, US data releases
+  okx_private.py signed OKX v5 client (your keys)
+  rails.py       safety rails from trading.toml, halt file, journal
+  trader.py      orders, live checks, slider sizing, account and 3-month history
+  trade_routes.py  /api/trade/* (localhost-only, per-run token)
+  trade_cli.py   btcliq-trade command
   powerlaw_calc.py  unchanged copy of btc-powerlaw/powerlaw.py
-  static/index.html   chart (TradingView Lightweight Charts)
+  static/index.html   the page (TradingView Lightweight Charts)
+  static/fonts/       JetBrains Mono, with its license (OFL.txt)
 ```

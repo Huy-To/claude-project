@@ -101,6 +101,29 @@ async def instruments(req):
     return web.json_response(await _trader(req).instrument_list())
 
 
+def _flag(v) -> bool:
+    return str(v or "").lower() in ("1", "true", "yes", "on")
+
+
+async def check(req):
+    """Read-only: the preview's numbers and rail checks without storing a preview (the ticket's live summary)."""
+    q = req.query
+    body = {"instId": q.get("instId", ""), "side": q.get("side", ""), "ordType": q.get("ordType") or None,
+            "sz": q.get("sz", ""), "px": q.get("px") or None, "reduce": _flag(q.get("reduce"))}
+    return web.json_response(await _trader(req).check(body))
+
+
+async def sizing(req):
+    q = req.query
+    return web.json_response(await _trader(req).sizing(q.get("instId", ""), q.get("side", ""), q.get("px") or None,
+                                                       _flag(q.get("reduce"))))
+
+
+async def history(req):
+    q = req.query
+    return web.json_response(await _trader(req).history(q.get("kind", ""), q.get("days", "90")))
+
+
 async def preview(req):
     return web.json_response(await _trader(req).preview(await _body(req), source="ui"))
 
@@ -110,27 +133,40 @@ async def place(req):
     accept = b.get("accept") or []
     if not isinstance(accept, list):
         raise OrderInputError("accept must be a list of rule names")
-    return web.json_response(await _trader(req).place(str(b.get("id", "")), source="ui", accept=[str(a) for a in accept]))
+    tr = _trader(req)
+    tr.forget_history()
+    return web.json_response(await tr.place(str(b.get("id", "")), source="ui", accept=[str(a) for a in accept]))
 
 
 async def cancel(req):
     b = await _body(req)
-    return web.json_response(await _trader(req).cancel(str(b.get("instId", "")), str(b.get("ordId", "")), source="ui"))
+    tr = _trader(req)
+    tr.forget_history()
+    return web.json_response(await tr.cancel(str(b.get("instId", "")), str(b.get("ordId", "")), source="ui"))
 
 
 async def amend(req):
     b = await _body(req)
-    return web.json_response(await _trader(req).amend(str(b.get("instId", "")), str(b.get("ordId", "")),
-                                                      b.get("px"), b.get("sz"), source="ui"))
+    accept = b.get("accept") or []
+    if not isinstance(accept, list):
+        raise OrderInputError("accept must be a list of rule names")
+    tr = _trader(req)
+    tr.forget_history()
+    return web.json_response(await tr.amend(str(b.get("instId", "")), str(b.get("ordId", "")),
+                                            b.get("px"), b.get("sz"), source="ui", accept=[str(a) for a in accept]))
 
 
 async def cancel_all(req):
-    return web.json_response(await _trader(req).cancel_all(source="ui"))
+    tr = _trader(req)
+    tr.forget_history()
+    return web.json_response(await tr.cancel_all(source="ui"))
 
 
 async def kill(req):
     b = await _body(req)
-    return web.json_response(await _trader(req).kill(str(b.get("reason", "")), source="ui"))
+    tr = _trader(req)
+    tr.forget_history()
+    return web.json_response(await tr.kill(str(b.get("reason", "")), source="ui"))
 
 
 async def resume(req):
@@ -145,6 +181,9 @@ def setup(app: web.Application) -> None:
     r.add_get("/api/trade/account", account)
     r.add_get("/api/trade/quote", quote)
     r.add_get("/api/trade/instruments", instruments)
+    r.add_get("/api/trade/check", check)
+    r.add_get("/api/trade/sizing", sizing)
+    r.add_get("/api/trade/history", history)
     r.add_post("/api/trade/preview", preview)
     r.add_post("/api/trade/place", place)
     r.add_post("/api/trade/cancel", cancel)

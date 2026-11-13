@@ -10,7 +10,7 @@ sets up the protections around that, in the order an order meets them:
 | 2. IP allowlist | Anyone who steals the key, from any other machine | okx.com → API |
 | 3. Limits file | Orders that are too big, badly priced, too frequent, or over your daily loss | `trading.toml` |
 | 4. Preview and confirm | Orders you didn't mean: you see cost, worst case and every check before sending | browser dialog / `preview` then `place` |
-| 5. Kill switch | Everything new, at once, and cancels open orders | Trade tab button / `btcliq-trade kill` |
+| 5. Kill switch | Everything new, at once, and cancels open orders | Kill button on the Order ticket / `btcliq-trade kill` |
 | 6. Journal | Nothing, but records every attempt for review | `data/trade_journal.jsonl` |
 
 If the limits file is missing or has a mistake in it, **trading is off**. btcliq never sends
@@ -56,7 +56,7 @@ chmod 600 .env
 The keys stay on the btcliq server. The browser never sees them.
 
 > Want to rehearse first? Create a key under OKX **Demo trading** instead, and add `OKX_DEMO=1`.
-> The Trade tab then says **Demo · OKX** instead of **Live · OKX**. Demo and live keys aren't
+> The Order ticket's title bar then says **Demo** instead of **Live**. Demo and live keys aren't
 > interchangeable: OKX error 50101 means the key and `OKX_DEMO` don't match.
 
 ## 3. Set your limits in `trading.toml`
@@ -69,7 +69,7 @@ Then edit it. A few rules:
 
 - Changes apply to the **next order**. No restart needed.
 - **A misspelled setting turns trading off.** For example, `max_contract = 5` instead of
-  `max_contracts`. The Trade tab and `btcliq-trade status` show which line is wrong. This is
+  `max_contracts`. The Order ticket and `btcliq-trade status` show which line is wrong. This is
   deliberate: a typo must never silently remove a limit.
 - Any number can be `"off"` (with quotes) to stop enforcing it. `0` means zero, not off.
 - **Closing orders get through the "stop" rails.** These are orders that only shrink a position you
@@ -330,7 +330,7 @@ A blocked preview prints `NO` next to each failed rail and exits with code 2.
 
 Any of these halts trading and cancels **every open order on the account**:
 
-- the **Kill switch** button at the top of the Trade tab,
+- the **Kill** button in the Order ticket's title bar,
 - `btcliq-trade kill --reason "CPI spike"`,
 - or, if btcliq isn't running: `touch data/TRADING_HALTED` (halts only; it can't cancel orders without btcliq).
 
@@ -387,7 +387,8 @@ Suggested rules for the agent's brief:
 
 1. `btcliq-trade --text status`: you should see `keys ok`, `permissions read_only,trade`, and your IP
    allowlist. If permissions show more than read and trade, delete the key and create a new one.
-2. Open the Trade tab. It should say **Live · OKX** and show your balances.
+2. Look at the Order ticket: its title bar should say **Live**, and the Balances tab under the chart
+   should show your balances.
 3. Place an order that can't fill. Buy 0.01 contract of `BTC-USDT-SWAP` (0.0001 BTC, about $7),
    **Post-only**, at the bid minus 2% (inside a 3% band). Confirm it, check it appears under Open orders
    and as a dashed line on the chart, then cancel it with ×.

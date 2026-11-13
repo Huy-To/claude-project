@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import logging
+import mimetypes
 import time
 import webbrowser
 from datetime import datetime, time as dt_time, timezone
@@ -566,6 +567,8 @@ def main(argv: list[str] | None = None) -> None:
     else:
         log.info("Chat is off: install Claude Code or add ANTHROPIC_API_KEY to .env")
     app.router.add_get("/", index)
+    mimetypes.add_type("font/woff2", ".woff2")
+    app.router.add_static("/fonts/", STATIC / "fonts", append_version=False)
     app.router.add_get("/api/candles", candles_handler)
     app.router.add_get("/api/book", book_handler)
     app.router.add_route("*", "/api/telegram", telegram_handler)

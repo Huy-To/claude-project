@@ -21,7 +21,7 @@ import logging
 import re
 import secrets
 import time
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from pathlib import Path
 
 import aiohttp
@@ -132,6 +132,101 @@ def describe_instrument(meta: dict) -> str:
     if t == "OPTION":
         size += f"; priced in {cm['price_ccy']} per 1 BTC"
     return f"{kind}: {size}"
+
+
+# ---------- history rows (fills, orders, funding), in one shape for the browser ----------
+
+HIST_TYPES = ("SWAP", "FUTURES", "OPTION", "SPOT")
+FUNDING_BILL_TYPE = "8"                   # OKX bill type: funding fee
+FUNDING_SUBTYPES = {"173", "174"}         # 173 funding fee expense, 174 funding fee income
+LIQ_SUBTYPES = {str(n) for n in range(100, 108)} | {"125", "126", "127", "128"}   # liquidations and ADL
+
+
+def unit_math(inst_id: str, inst_type: str, meta: dict | None = None) -> dict:
+    """contract_math() for any instrument; for expired ones (no spec left on OKX) OKX's standard BTC sizes."""
+    if meta:
+        return contract_math(meta)
+    if inst_type == "SPOT":
+        parts = inst_id.split("-")
+        return {"unit": parts[0] if parts else "BTC", "btc_per": 1.0 if inst_id.startswith("BTC-") else None,
+                "usd_per": None, "price_ccy": parts[1] if len(parts) > 1 else "USDT"}
+    if not inst_id.startswith("BTC-"):
+        return {"unit": "contracts", "btc_per": None, "usd_per": None, "price_ccy": None}
+    if inst_type == "OPTION":       # 1 contract = 0.01 BTC; coin-margined ones are priced in BTC
+        return {"unit": "contracts", "btc_per": 0.01, "usd_per": None,
+                "price_ccy": "BTC" if inst_id.startswith("BTC-USD-") else "USD"}
+    if inst_id.startswith("BTC-USD-"):   # coin-margined perpetual and futures: $100 a contract
+        return {"unit": "contracts", "btc_per": None, "usd_per": 100.0, "price_ccy": "USD"}
+    if inst_id.startswith("BTC-USDT-"):  # USDT-margined: 0.01 BTC a contract
+        return {"unit": "contracts", "btc_per": 0.01, "usd_per": None, "price_ccy": "USD"}
+    return {"unit": "contracts", "btc_per": None, "usd_per": None, "price_ccy": "USD"}
+
+
+def to_usd(v: float | None, ccy: str | None, btc_usd: float | None) -> float | None:
+    if v is None:
+        return None
+    if (ccy or "") in ("USDT", "USDC", "USD", ""):
+        return v
+    if ccy == "BTC":
+        return v * btc_usd if btc_usd else None
+    return None
+
+
+def norm_fill(f: dict, um: dict) -> dict:
+    t = f.get("instType") or ""
+    px, sz, idx = _f(f.get("fillPx")), _f(f.get("fillSz")) or 0.0, _f(f.get("fillIdxPx"))
+    value = None
+    if t == "SPOT":
+        value = sz * px if px and (f.get("instId") or "").endswith(("-USDT", "-USDC", "-USD")) else None
+    elif t == "OPTION":
+        per, pu = um.get("btc_per"), _f(f.get("fillPxUsd"))
+        if per and pu:
+            value = pu * sz * per
+        elif per and px:
+            value = px * sz * per * (idx or 0) if um.get("price_ccy") == "BTC" else px * sz * per
+    elif um.get("usd_per"):
+        value = sz * um["usd_per"]
+    elif um.get("btc_per") and px:
+        value = sz * um["btc_per"] * px
+    fee, fee_ccy = _f(f.get("fee")) or 0.0, f.get("feeCcy") or ""
+    pnl = _f(f.get("fillPnl")) or 0.0
+    return {"id": f.get("billId") or f.get("tradeId"), "ts": int(f.get("ts") or f.get("fillTime") or 0),
+            "instId": f.get("instId"), "instType": t, "side": f.get("side"), "posSide": f.get("posSide"),
+            "px": px, "sz": sz, "unit": um.get("unit"), "price_ccy": um.get("price_ccy"),
+            "value_usd": value, "fee": fee, "feeCcy": fee_ccy, "fee_usd": to_usd(fee, fee_ccy, idx),
+            "pnl": pnl, "pnl_usd": to_usd(pnl, fee_ccy, idx) if pnl else 0.0,
+            "ordId": f.get("ordId"), "tradeId": f.get("tradeId"), "maker": f.get("execType") == "M",
+            "liquidation": str(f.get("subType")) in LIQ_SUBTYPES}
+
+
+def norm_order(o: dict, um: dict) -> dict:
+    return {"id": o.get("ordId"), "ts": int(o.get("cTime") or 0), "uts": int(o.get("uTime") or 0),
+            "instId": o.get("instId"), "instType": o.get("instType"), "ordType": o.get("ordType"),
+            "side": o.get("side"), "posSide": o.get("posSide"), "px": _f(o.get("px")), "avgPx": _f(o.get("avgPx")),
+            "sz": _f(o.get("sz")), "filled": _f(o.get("accFillSz")), "state": o.get("state"),
+            "reduceOnly": o.get("reduceOnly") == "true", "category": o.get("category") or "normal",
+            "fee": _f(o.get("fee")), "feeCcy": o.get("feeCcy"), "pnl": _f(o.get("pnl")),
+            "unit": um.get("unit"), "price_ccy": um.get("price_ccy"), "clOrdId": o.get("clOrdId")}
+
+
+def match_rate(rates: list[tuple[int, float]], ts: int, window_ms: int = 600_000) -> float | None:
+    """The funding rate settled at (or within ten minutes of) a funding payment's time."""
+    best = None
+    for t, r in rates:
+        d = abs(t - ts)
+        if d <= window_ms and (best is None or d < best[0]):
+            best = (d, r)
+    return best[1] if best else None
+
+
+def norm_funding(b: dict, um: dict, rates: list[tuple[int, float]]) -> dict:
+    sz, mark, chg = _f(b.get("sz")) or 0.0, _f(b.get("px")), _f(b.get("balChg")) or 0.0
+    ccy, ts = b.get("ccy") or "", int(b.get("ts") or 0)
+    pos_btc = sz * um["btc_per"] if um.get("btc_per") else (sz * um["usd_per"] / mark if um.get("usd_per") and mark else None)
+    pos_usd = sz * um["usd_per"] if um.get("usd_per") else (pos_btc * mark if pos_btc is not None and mark else None)
+    return {"id": b.get("billId"), "ts": ts, "instId": b.get("instId"), "sz": sz, "pos_btc": pos_btc, "pos_usd": pos_usd,
+            "mark": mark, "pay": chg, "ccy": ccy, "pay_usd": to_usd(chg, ccy, mark),
+            "income": str(b.get("subType")) == "174", "rate": match_rate(rates, ts)}
 
 
 class PreviewStore:
@@ -682,6 +777,236 @@ class Trader:
         self.journal.add({"kind": "leverage", "source": source, "instId": inst_id, "lever": lever})
         return {"ok": True, "result": d}
 
+    # ---------- read-only helpers for the ticket: live checks and sizing ----------
+
+    async def check(self, req: dict) -> dict:
+        """The preview's numbers and rail checks, without storing a preview (for the ticket's live summary)."""
+        p = await self.build(req)
+        return {k: p[k] for k in ("numbers", "checks", "blocked", "asks", "warnings", "position", "market",
+                                  "instrument", "okx_order", "account")}
+
+    async def sizing(self, inst_id: str, side: str, px=None, reduce: bool = False) -> dict:
+        """What the ticket's size slider spans: the most OKX lets you trade, and where the safety rails stop you."""
+        side = str(side or "").lower()
+        if side not in ("buy", "sell"):
+            raise OrderInputError("side must be buy or sell")
+        meta = await self.instrument(inst_id)
+        inst_id, t, cm = meta["instId"], meta["instType"], contract_math(meta)
+        self.rails.reload()
+        if self.rails.error:
+            raise OrderInputError(self.rails.error)
+        cfg = self.rails.cfg
+        acct, q = await asyncio.gather(self.account_config(), self.quote(inst_id))
+        acct_lv, pos_mode = str(acct.get("acctLv", "")), acct.get("posMode", "net_mode")
+        if t == "SPOT":
+            spot_mode = cfg["account"]["spot_mode"]
+            td_mode = ("cross" if acct_lv in ("3", "4") else "cash") if spot_mode == "auto" else spot_mode
+        else:
+            td_mode = cfg["account"]["derivatives_margin"]
+        ref = _f(px) or q["mark"] or q["last"]
+        index = q["index"] or (q["mark"] if t == "SPOT" else None)
+
+        net = long_q = short_q = 0.0
+        if t != "SPOT":
+            rows = await self._positions(inst_id)
+            long_q = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") == "long")
+            short_q = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") == "short")
+            net = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") in ("net", "", None)) + long_q - short_q
+
+        if t == "SPOT":
+            closing = side == "sell"
+        elif reduce:
+            closing = True
+        else:
+            closing = (side == "sell" and net > 0) or (side == "buy" and net < 0)
+
+        if reduce and t != "SPOT":
+            if pos_mode == "long_short_mode" and t != "OPTION":
+                okx_max = long_q if side == "sell" else short_q
+            else:
+                okx_max = max(0.0, net) if side == "sell" else max(0.0, -net)
+        elif t == "SPOT" and side == "sell":
+            okx_max = await self._spot_balance("BTC")
+        else:
+            d = await self.okx.get("/api/v5/account/max-size", instId=inst_id, tdMode=td_mode,
+                                   px=str(ref) if ref and t != "OPTION" else None)
+            row = d[0] if d else {}
+            okx_max = _f(row.get("maxBuy" if side == "buy" else "maxSell"))
+
+        # What one unit of size is worth, the way the rails count it.
+        if t == "SPOT":
+            val_per = ref
+        elif cm["usd_per"]:
+            val_per = cm["usd_per"]
+        elif t == "OPTION":
+            val_per = cm["btc_per"] * index if index else None
+        else:
+            val_per = cm["btc_per"] * ref if ref else None
+        sec, order, daily = self.rails.section(t), cfg["order"], cfg["daily"]
+        asks = set(cfg["option"].get("ask") or []) if t == "OPTION" else set()
+        caps: list[dict] = []
+
+        def add(rule: str, size, label: str):
+            if size is not None:
+                caps.append({"rule": rule, "size": max(0.0, float(size)), "label": label, "ask": rule in asks})
+
+        c = R._lim(order["max_notional_usd"])
+        if c is not None and val_per:
+            add("order.max_notional_usd", c / val_per, f"${c:,.0f} per-order cap")
+        c = R._lim(sec.get("max_order_usd", R.OFF))
+        if c is not None and val_per:
+            add(f"{R.TYPE_SECTION[t]}.max_order_usd", c / val_per, f"${c:,.0f} {R.TYPE_SECTION[t]} order cap")
+        if t == "OPTION":
+            c = R._lim(sec["max_contracts"])
+            if c is not None:
+                add("option.max_contracts", c, f"{c:g}-contract cap")
+            c = R._lim(sec["max_premium_usd"])
+            prem_per = cm["btc_per"] * ref * (index if cm["price_ccy"] == "BTC" else 1) if ref and (index or cm["price_ccy"] != "BTC") else None
+            if c is not None and prem_per:
+                add("option.max_premium_usd", c / prem_per, f"${c:,.0f} premium cap")
+        if not closing:
+            used = self.journal.today().get("notional_usd", 0.0)
+            c = R._lim(daily["max_notional_usd"])
+            if c is not None and val_per:
+                add("daily.max_notional_usd", (c - used) / val_per, f"${max(0.0, c - used):,.0f} of today's volume left")
+            if t in ("SWAP", "FUTURES"):
+                c = R._lim(sec["max_position_usd"])
+                if c is not None and val_per:
+                    add(f"{R.TYPE_SECTION[t]}.max_position_usd", (c - abs(net) * val_per) / val_per, f"${c:,.0f} position cap")
+            if t == "OPTION":
+                c = R._lim(sec["max_position_contracts"])
+                if c is not None:
+                    add("option.max_position_contracts", c - abs(net), f"{c:g}-contract position cap")
+        cap = min(caps, key=lambda x: x["size"]) if caps else None
+        lot = Decimal(meta["lotSz"])
+
+        def down(v):
+            if v is None:
+                return None
+            return float((Decimal(str(v)) / lot).to_integral_value(rounding=ROUND_FLOOR) * lot)
+
+        return {"instId": inst_id, "side": side, "unit": cm["unit"], "lot": meta["lotSz"], "min": meta["minSz"],
+                "max": down(okx_max), "cap": down(cap["size"]) if cap else None,
+                "cap_label": cap["label"] if cap else None, "cap_rule": cap["rule"] if cap else None,
+                "cap_ask": bool(cap and cap["ask"]), "position": net, "closing": closing, "td_mode": td_mode,
+                "val_per_unit": val_per, "ref_px": ref}
+
+    # ---------- history: fills, orders and funding (last 3 months) ----------
+
+    async def _pages(self, path: str, params: dict, cursor: str, pages: int, gate: asyncio.Semaphore) -> tuple[list, bool]:
+        """Up to `pages` pages of 100, newest first. Returns (rows, more_left)."""
+        out, after = [], None
+        for _ in range(pages):
+            async with gate:
+                d = await self.okx.get(path, **params, after=after, limit="100")
+            out.extend(d)
+            if len(d) < 100:
+                return out, False
+            after = d[-1].get(cursor)
+            if not after:
+                return out, False
+        return out, True
+
+    async def _units(self, rows: list[dict]) -> dict[str, dict]:
+        """Contract math for every instrument in `rows`: live specs for perpetuals, OKX's standard sizes otherwise."""
+        out = {}
+        for inst_id, t in {(r.get("instId") or "", r.get("instType") or "") for r in rows}:
+            meta = None
+            if t == "SWAP":
+                try:
+                    meta = await self.instrument(inst_id)
+                except Exception:
+                    meta = None
+            out[inst_id] = unit_math(inst_id, t, meta)
+        return out
+
+    async def _funding_rates(self, inst_id: str, begin: int) -> list[tuple[int, float]]:
+        async def fetch():
+            out, after = [], None
+            for _ in range(4):        # 100 settlements a page, about a month at 8-hourly funding
+                d = await self.okx.public("/api/v5/public/funding-rate-history", instId=inst_id, after=after, limit="100")
+                for x in d:
+                    rate = _f(x.get("realizedRate")) if x.get("realizedRate") not in (None, "") else _f(x.get("fundingRate"))
+                    if rate is not None:
+                        out.append((int(x.get("fundingTime") or 0), rate))
+                if len(d) < 100 or not d or int(d[-1].get("fundingTime") or 0) < begin:
+                    break
+                after = d[-1].get("fundingTime")
+            return sorted(out)
+        try:
+            return await self._cached(f"frates:{inst_id}:{begin // 3_600_000}", 600, fetch)
+        except Exception as e:
+            log.warning("Couldn't read funding rates for %s: %s", inst_id, e)
+            return []
+
+    async def history(self, kind: str, days: int = 90) -> dict:
+        """Fills, finished orders or funding payments from OKX, newest first, across instrument types."""
+        kind = str(kind or "").lower()
+        if kind not in ("fills", "orders", "funding"):
+            raise OrderInputError("kind must be fills, orders or funding")
+        try:
+            days = max(1, min(int(days), 92))
+        except (TypeError, ValueError):
+            raise OrderInputError("days must be a whole number")
+        if not self.okx.configured:
+            raise OKXNotConfigured("Add your OKX API key to .env to see your history")
+
+        async def fetch():
+            begin = int(time.time() * 1000) - days * 86_400_000
+            gate = asyncio.Semaphore(2)          # OKX allows 10 history requests per 2 seconds
+            jobs: list[tuple[str, object]] = []
+            if kind == "fills":
+                jobs.append(("recent", self._pages("/api/v5/trade/fills", {"begin": str(begin)}, "billId", 2, gate)))
+                jobs += [(t, self._pages("/api/v5/trade/fills-history", {"instType": t, "begin": str(begin)},
+                                         "billId", 5, gate)) for t in HIST_TYPES]
+                key = "billId"
+            elif kind == "orders":
+                for t in HIST_TYPES:
+                    jobs.append((f"{t} (7 days)", self._pages("/api/v5/trade/orders-history", {"instType": t, "begin": str(begin)},
+                                                              "ordId", 2, gate)))
+                    jobs.append((t, self._pages("/api/v5/trade/orders-history-archive", {"instType": t, "begin": str(begin)},
+                                                "ordId", 3, gate)))
+                key = "ordId"
+            else:
+                params = {"type": FUNDING_BILL_TYPE, "instType": "SWAP", "begin": str(begin)}
+                jobs.append(("recent", self._pages("/api/v5/account/bills", params, "billId", 2, gate)))
+                jobs.append(("archive", self._pages("/api/v5/account/bills-archive", params, "billId", 3, gate)))
+                key = "billId"
+            res = await asyncio.gather(*(j for _, j in jobs), return_exceptions=True)
+            raw: dict = {}
+            errors, more = {}, False
+            for (name, _), r in zip(jobs, res):
+                if isinstance(r, Exception):
+                    errors[name] = str(r)
+                    continue
+                d, left = r
+                more = more or left
+                for x in d:
+                    raw[x.get(key) or id(x)] = x
+            rows = list(raw.values())
+            units = await self._units(rows)
+            if kind == "fills":
+                out = [norm_fill(f, units.get(f.get("instId") or "", {})) for f in rows]
+            elif kind == "orders":
+                out = [norm_order(o, units.get(o.get("instId") or "", {})) for o in rows]
+            else:
+                rows = [b for b in rows if str(b.get("subType")) in FUNDING_SUBTYPES]
+                rates = {}
+                for inst in {b.get("instId") for b in rows if b.get("instId")}:
+                    rates[inst] = await self._funding_rates(inst, begin)
+                out = [norm_funding(b, units.get(b.get("instId") or "", {}), rates.get(b.get("instId"), [])) for b in rows]
+            out = [r for r in out if r["ts"] >= begin]
+            out.sort(key=lambda r: r["ts"], reverse=True)
+            if errors and not out and len(errors) == len(jobs):
+                raise OKXError("history", next(iter(errors.values())))
+            return {"kind": kind, "days": days, "since": begin, "rows": out, "truncated": more, "errors": errors}
+
+        return await self._cached(f"hist:{kind}:{days}", 30, fetch)
+
+    def forget_history(self) -> None:
+        for k in [k for k in self._cache if k.startswith("hist:")]:
+            self._cache.pop(k, None)
+
     # ---------- account snapshot ----------
 
     def status(self) -> dict:
@@ -714,18 +1039,28 @@ class Trader:
         out["balances"] = [{"ccy": d.get("ccy"), "eq": _f(d.get("eq")), "avail": _f(d.get("availBal")),
                             "eq_usd": _f(d.get("eqUsd")), "upl": _f(d.get("upl")), "frozen": _f(d.get("frozenBal"))}
                            for d in bal.get("details", []) if (_f(d.get("eq")) or 0) != 0]
-        out["positions"] = [{"instId": p.get("instId"), "type": p.get("instType"), "pos": _f(p.get("pos")),
-                             "posSide": p.get("posSide"), "avgPx": _f(p.get("avgPx")), "markPx": _f(p.get("markPx")),
-                             "upl": _f(p.get("upl")), "uplRatio": _f(p.get("uplRatio")), "ccy": p.get("ccy"),
-                             "notionalUsd": _f(p.get("notionalUsd")), "lever": _f(p.get("lever")),
-                             "liqPx": _f(p.get("liqPx")), "mgnMode": p.get("mgnMode"),
-                             "delta": _f(p.get("deltaPA")), "theta": _f(p.get("thetaPA"))}
-                            for p in get(2) if _f(p.get("pos"))]
+        def position(p: dict) -> dict:
+            usd_px = _f(p.get("usdPx")) or _f(p.get("idxPx"))
+            upl, ccy = _f(p.get("upl")), p.get("ccy")
+            um = unit_math(p.get("instId") or "", p.get("instType") or "")
+            return {"instId": p.get("instId"), "type": p.get("instType"), "pos": _f(p.get("pos")),
+                    "posSide": p.get("posSide"), "avgPx": _f(p.get("avgPx")), "markPx": _f(p.get("markPx")),
+                    "upl": upl, "uplRatio": _f(p.get("uplRatio")), "ccy": ccy, "upl_usd": to_usd(upl, ccy, usd_px),
+                    "notionalUsd": _f(p.get("notionalUsd")), "lever": _f(p.get("lever")),
+                    "liqPx": _f(p.get("liqPx")), "mgnMode": p.get("mgnMode"), "availPos": _f(p.get("availPos")),
+                    "idxPx": _f(p.get("idxPx")), "bePx": _f(p.get("bePx")), "imr": _f(p.get("imr")),
+                    "realizedPnl": _f(p.get("realizedPnl")), "fundingFee": _f(p.get("fundingFee")),
+                    "delta": _f(p.get("deltaPA")), "theta": _f(p.get("thetaPA")),
+                    "deltaBS": _f(p.get("deltaBS")), "thetaBS": _f(p.get("thetaBS")),
+                    "price_ccy": um.get("price_ccy"), "unit": um.get("unit"), "cTime": int(p.get("cTime") or 0)}
+        out["positions"] = [position(p) for p in get(2) if _f(p.get("pos"))]
         out["orders"] = [{"instId": o.get("instId"), "type": o.get("instType"), "ordId": o.get("ordId"),
                           "clOrdId": o.get("clOrdId"), "side": o.get("side"), "posSide": o.get("posSide"),
                           "ordType": o.get("ordType"), "px": _f(o.get("px")), "sz": _f(o.get("sz")),
-                          "filled": _f(o.get("accFillSz")), "state": o.get("state"),
-                          "reduceOnly": o.get("reduceOnly") == "true", "cTime": int(o.get("cTime") or 0)}
+                          "filled": _f(o.get("accFillSz")), "avgPx": _f(o.get("avgPx")), "state": o.get("state"),
+                          "reduceOnly": o.get("reduceOnly") == "true", "cTime": int(o.get("cTime") or 0),
+                          "price_ccy": unit_math(o.get("instId") or "", o.get("instType") or "").get("price_ccy"),
+                          "unit": unit_math(o.get("instId") or "", o.get("instType") or "").get("unit")}
                          for o in get(3)]
         out["fills"] = [{"instId": f.get("instId"), "side": f.get("side"), "px": _f(f.get("fillPx")),
                          "sz": _f(f.get("fillSz")), "fee": _f(f.get("fee")), "feeCcy": f.get("feeCcy"),

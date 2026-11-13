@@ -20,7 +20,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-btcliq = ["static/*"]
+btcliq = ["static/*", "static/fonts/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
