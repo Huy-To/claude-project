@@ -1,0 +1,9 @@
+# Secrets and local state: never commit
+.env
+trading.toml
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
