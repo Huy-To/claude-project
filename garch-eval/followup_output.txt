@@ -1,0 +1,7 @@
+persistence (alpha+beta) by estimation window, fit ending 2026-11-11:
+  expanding since 2014 (what the plugin does)   alpha 0.1017 beta 0.8983 sum 1.000000  half-life    infd  long-run vol    inf%  nu 3.19
+  last 1500d                                    alpha 0.1069 beta 0.8456 sum 0.952448  half-life   14.2d  long-run vol   64.0%  nu 3.05
+  last 1000d                                    alpha 0.0569 beta 0.9230 sum 0.979883  half-life   34.1d  long-run vol   56.5%  nu 3.64
+  last 730d                                     alpha 0.0710 beta 0.8713 sum 0.942327  half-life   11.7d  long-run vol   46.6%  nu 3.85
+
+provisional (OKX bars + 11-13 at live index 68,748, i.e. IF today closed here): vol 53.1%  pctile 70.1  regime storm  size@58 1.09x  (today's ret -3.68%)

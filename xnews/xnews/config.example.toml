@@ -1,0 +1,24 @@
+# Copy to config.toml and edit. Secrets go in .env, not here.
+
+[monitor]
+accounts = ["MarioNawfal"]       # handles, with or without "@"
+poll_seconds = 300               # how often to check each account
+first_run_limit = 5              # posts to grab the first time (keeps paid sources cheap)
+include_reposts = true
+db_path = "data/xnews.db"
+jsonl_path = "data/posts.jsonl"  # one JSON object per new post; "" to disable
+highlight_keywords = ["breaking", "war", "sanctions", "fed", "tariff", "bitcoin", "oil"]
+
+[source]
+# Which backend reads X: "x_api" (official, paid), "twitterapi_io" (unofficial, paid),
+# or "rss" (free, via a self-hosted RSSHub/Nitter bridge).
+use = "x_api"
+
+[source.x_api]
+# bearer_token is read from X_BEARER_TOKEN in .env
+
+[source.twitterapi_io]
+# api_key is read from TWITTERAPI_IO_KEY in .env
+
+[source.rss]
+url_template = "http://localhost:1200/twitter/user/{account}"

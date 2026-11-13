@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#   garch forecast --ticker BTC-USD --json    1-day vol forecast + regime
+#   garch size     --ticker BTC-USD --json    position-size multiplier
+#   garch compare  --ticker BTC-USD           fixed vs vol-targeted backtest
+#   (any command takes --csv prices.csv instead of --ticker; add -h for options)
+#
+# garch-method launcher: runs a script together with its dependencies.
+# With uv on PATH it uses `uv run` (dependencies come from each script's inline
+# metadata). Without uv it keeps a private virtualenv, created on first use at
+# ${GARCH_METHOD_VENV:-~/.cache/garch-method/venv}. Nothing is installed system-wide.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+case "${1:-}" in
+  forecast) script="garch_forecast.py" ;;
+  size)     script="vol_target.py" ;;
+  compare)  script="compare.py" ;;
+  *)
+    sed -n '2,5p' "${BASH_SOURCE[0]}" | sed 's/^#//' >&2
+    exit 64 ;;
+esac
+shift
+
+if command -v uv >/dev/null 2>&1; then
+  exec uv run --quiet "$here/$script" "$@"
+fi
+
+# Keep in sync with the scripts' inline metadata (tests/test_fixes.py checks this).
+deps=("arch>=6.0" "pandas>=2.2" "numpy>=1.24" "matplotlib>=3.7" "yfinance>=0.2.54")
+stamp="deps-1"
+venv="${GARCH_METHOD_VENV:-${XDG_CACHE_HOME:-$HOME/.cache}/garch-method/venv}"
+
+if [ ! -f "$venv/.garch-method-$stamp" ]; then
+  mkdir -p "$(dirname "$venv")"
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$venv.lock"
+    flock 9
+  fi
+  if [ ! -f "$venv/.garch-method-$stamp" ]; then
+    echo "garch-method: setting up $venv (first run only, ~1 min)..." >&2
+    if [ ! -x "$venv/bin/python" ]; then
+      python3 -m venv "$venv" || {
+        echo "garch-method: 'python3 -m venv' failed. Install uv (https://docs.astral.sh/uv/) or python3-venv." >&2
+        exit 1
+      }
+    fi
+    "$venv/bin/python" -m pip install --quiet --disable-pip-version-check "${deps[@]}" >&2 || {
+      echo "garch-method: dependency install failed (pip output above)." >&2
+      exit 1
+    }
+    touch "$venv/.garch-method-$stamp"
+  fi
+  exec 9>&-
+fi
+
+exec "$venv/bin/python" "$here/$script" "$@"

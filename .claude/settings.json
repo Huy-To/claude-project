@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "frontend-design@anthropic-plugin-directory": true,
+    "garch-method@garchmethod": false,
+    "garch-method@garchmethod-fixed": true,
+    "exa-deep-research@anthropic-plugin-directory": true,
+    "x-content-intelligence@anthropic-plugin-directory": true
+  }
+}
