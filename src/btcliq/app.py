@@ -23,7 +23,8 @@ import aiohttp
 from aiohttp import web
 
 from .book import VENUES as BOOK_VENUES, BookFeed
-from .chat import DEFAULT_MODEL, Chat
+from . import trade_routes
+from .chat import DEFAULT_MODEL, Chat, load_dotenv
 from .exchanges import TIMEFRAMES, Exchanges
 from .macro import MacroCalendar
 from .options import FAMILIES, OptionsFeed
@@ -469,6 +470,7 @@ async def start_background(app):
     app["ex"] = ex = Exchanges(session)
     app["book"] = st.book = BookFeed(session)
     st.options = OptionsFeed(session)
+    trade_routes.start(app, session, Path(st.args.data_dir))
     st.powerlaw = PowerLaw(session, Path(st.args.data_dir))
 
     async def on_powerlaw(state):
@@ -553,6 +555,7 @@ def main(argv: list[str] | None = None) -> None:
                         datefmt="%H:%M:%S")
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
+    load_dotenv()
     app = web.Application()
     app["state"] = State(args)
     app["chat"] = Chat(args.model, args.chat)
@@ -576,6 +579,7 @@ def main(argv: list[str] | None = None) -> None:
     app.router.add_get("/api/chat", chat_status)
     app.router.add_post("/api/chat", chat_handler)
     app.router.add_get("/ws", ws_handler)
+    trade_routes.setup(app)
     app.on_startup.append(start_background)
     app.on_cleanup.append(stop_background)
     web.run_app(app, host="127.0.0.1", port=args.port, print=None)

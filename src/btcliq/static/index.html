@@ -249,6 +249,8 @@
   .dtab.dragging { opacity: .35; }
   .dfill { flex: 1; min-width: 8px; }
   .dtabs > .ibtn { align-self: center; }
+  /* Five tabs don't fit with labels in a narrow panel: label only the open one, then none. */
+  @container sec (max-width: 440px) { .dtab:not([aria-selected="true"]) .lbl { display: none; } .dtab:not([aria-selected="true"]) { padding: 0 10px; } }
   @container sec (max-width: 330px) { .dtab .lbl { display: none; } .dtab { padding: 0 10px; } }
   .dbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -593,6 +595,73 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
+
+  /* ---------- trade panel ---------- */
+  #pane-trade { overflow-y: auto; }
+  .tr-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
+  .tr-head .muted { font-size: var(--fs-1); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill.live { background: rgba(245,179,1,.15); color: var(--warn); }
+  .pill.demo { background: var(--accent-soft); color: var(--accent); }
+  .pill.off { background: var(--raised); color: var(--muted); }
+  .btn.danger { color: var(--down); border-color: rgba(239,83,80,.45); }
+  .btn.danger:hover { background: rgba(239,83,80,.12); color: var(--down); }
+  .tr-banner { margin: 10px 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn);
+    border-radius: var(--r-2); background: var(--raised); font-size: var(--fs-2); line-height: 1.5; }
+  .tr-banner.halt { border-left-color: var(--down); }
+  .tr-banner b { display: block; margin-bottom: 2px; }
+  .tr-banner .btn { margin-top: 8px; }
+  .tr-banner code { font-size: var(--fs-1); }
+  #tr-form { display: grid; gap: 8px; }
+  .tr-about { min-height: 16px; }
+  .tr-quote { display: flex; gap: 10px; font-size: var(--fs-1); color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+  .tr-quote b { color: var(--text); font-weight: 600; }
+  .tr-side { width: 100%; }
+  .tr-side button { flex: 1; font-weight: 600; }
+  .tr-side button.on[data-side="buy"] { background: rgba(38,166,154,.18); color: var(--up); }
+  .tr-side button.on[data-side="sell"] { background: rgba(239,83,80,.18); color: var(--down); }
+  #tr-type { width: 100%; } #tr-type button { flex: 1; padding: 0 4px; }
+  .tr-field { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 8px; font-size: var(--fs-2); color: var(--muted); }
+  .tr-field .input { font-variant-numeric: tabular-nums; }
+  .tr-field .unit { min-width: 56px; font-size: var(--fs-1); }
+  .tr-field[hidden] { display: none; }
+  .tr-quick { display: flex; gap: 4px; padding-left: 52px; }
+  .tr-quick[hidden] { display: none; }
+  .tr-info { padding-left: 52px; font-variant-numeric: tabular-nums; }
+  .btn.go-buy { background: rgba(38,166,154,.22); color: var(--up); border-color: transparent; font-weight: 600; }
+  .btn.go-buy:hover { background: rgba(38,166,154,.32); color: var(--up); }
+  .btn.go-sell { background: rgba(239,83,80,.2); color: var(--down); border-color: transparent; font-weight: 600; }
+  .btn.go-sell:hover { background: rgba(239,83,80,.3); color: var(--down); }
+  .tr-rows { display: grid; gap: 2px; }
+  .tr-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-bottom: 1px solid var(--line-soft);
+    font-size: var(--fs-2); font-variant-numeric: tabular-nums; }
+  .tr-row:last-child { border-bottom: 0; }
+  .tr-row .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tr-row .sub { color: var(--muted); font-size: var(--fs-1); }
+  .tr-row .acts { grid-row: span 2; display: flex; align-items: center; gap: 4px; }
+  .tr-row .r { text-align: right; }
+  .tr-usage { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: var(--fs-2); font-variant-numeric: tabular-nums; }
+  .tr-usage span { color: var(--muted); }
+  .meter { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: var(--line-soft); overflow: hidden; margin-bottom: 4px; }
+  .meter i { display: block; height: 100%; background: var(--accent); }
+  .meter i.hot { background: var(--warn); } .meter i.full { background: var(--down); }
+  /* order confirmation */
+  dialog.confirm { width: 440px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); padding: 0; overflow: auto;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-2); box-shadow: var(--shadow); }
+  dialog.confirm::backdrop { background: rgba(5,8,12,.6); }
+  .cf-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 0; font-size: var(--fs-4); font-weight: 600; }
+  .cf-main { padding: 10px 16px 0; font-size: var(--fs-5); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.35; }
+  .cf-main .about { display: block; margin-top: 2px; color: var(--muted); font-size: var(--fs-1); font-weight: 400; }
+  .cf-body { padding: 12px 16px; display: grid; gap: 12px; }
+  .cf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+  .cf-grid .kv b { font-size: var(--fs-3); font-variant-numeric: tabular-nums; }
+  .cf-grid .wide { grid-column: 1 / -1; }
+  .cf-warn { padding: 8px 10px; border-radius: var(--r-1); background: rgba(245,179,1,.1); color: var(--warn); font-size: var(--fs-2); line-height: 1.45; }
+  .cf-checks { display: grid; gap: 3px; font-size: var(--fs-2); }
+  .cf-checks div { display: flex; gap: 8px; } .cf-checks .ok { color: var(--up); } .cf-checks .no { color: var(--down); }
+  .cf-checks .bad { color: var(--text); }
+  .cf-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--panel);
+    border-top: 1px solid var(--line); }
+  .cf-foot .muted { font-size: var(--fs-1); }
 </style>
 </head>
 <body>
@@ -639,6 +708,7 @@
   <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3.5 9.5L12 4.5l8.5 5"/><path d="M6 11v6.5M10 11v6.5M14 11v6.5M18 11v6.5"/><path d="M4 20.5h16"/></symbol>
   <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 4.5h11.5l-2.5 4 2.5 4H6"/></symbol>
   <symbol id="i-bars" viewBox="0 0 24 24"><path d="M5 20v-5M10 20v-9M15 20v-6M20 20V5"/></symbol>
+  <symbol id="i-trade" viewBox="0 0 24 24"><path d="M7 20V5M3.5 8.5L7 5l3.5 3.5"/><path d="M17 4v15M13.5 15.5L17 19l3.5-3.5"/></symbol>
   <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
 </svg>
 
@@ -840,6 +910,51 @@
     </div>
     <div id="news-list" class="scroll"></div>
   </section>
+  <section class="pane" id="pane-trade" aria-label="Trade">
+    <div class="tr-head">
+      <span class="pill off" id="tr-env">Trading off</span>
+      <span class="muted" id="tr-acct"></span>
+      <span class="grow"></span>
+      <button class="btn sm danger" id="tr-kill" data-tip="Kill switch: halt trading and cancel every open order" hidden>
+        <svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Kill switch</button>
+    </div>
+    <div id="tr-banner"></div>
+    <div class="sec">
+      <h3 class="sec-title">Order ticket</h3>
+      <form id="tr-form" autocomplete="off">
+        <span class="field"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="tr-inst" class="input" list="tr-insts" placeholder="Instrument, e.g. BTC-USDT-SWAP" aria-label="Instrument" spellcheck="false"></span>
+        <datalist id="tr-insts"></datalist>
+        <div class="tr-about note" id="tr-about"></div>
+        <div class="tr-quote" id="tr-quote"></div>
+        <div class="seg tr-side" role="group" aria-label="Side">
+          <button type="button" data-side="buy">Buy</button><button type="button" data-side="sell">Sell</button>
+        </div>
+        <div class="seg" id="tr-type" role="group" aria-label="Order type">
+          <button type="button" data-t="limit" title="Rests in the book at your price">Limit</button>
+          <button type="button" data-t="post_only" title="Maker only: canceled if it would fill straight away">Post-only</button>
+          <button type="button" data-t="ioc" title="Fill what you can now at your price or better, cancel the rest">IOC</button>
+          <button type="button" data-t="market" title="Fill now at the best available price (not for options)">Market</button>
+        </div>
+        <label class="tr-field" id="tr-px-row">Price <input id="tr-px" class="input" inputmode="decimal" aria-label="Limit price"><span class="unit" id="tr-pxu"></span></label>
+        <div class="tr-quick" id="tr-quick">
+          <button type="button" class="btn sm" data-q="bid">Bid</button><button type="button" class="btn sm" data-q="mid">Mid</button>
+          <button type="button" class="btn sm" data-q="ask">Ask</button><button type="button" class="btn sm" data-q="mark">Mark</button>
+        </div>
+        <label class="tr-field">Size <input id="tr-sz" class="input" inputmode="decimal" aria-label="Size"><span class="unit" id="tr-szu"></span></label>
+        <div class="tr-info note" id="tr-szinfo"></div>
+        <label class="tgl" data-tip="Only shrink or close a position you already hold"><input type="checkbox" class="switch" id="tr-reduce">Reduce only (close)</label>
+        <button class="btn primary" id="tr-go" type="submit">Preview order</button>
+        <div class="err" id="tr-err"></div>
+      </form>
+    </div>
+    <div class="sec" id="tr-pos-sec"><h3 class="sec-title">Positions <span class="muted" id="tr-pos-n"></span></h3><div class="tr-rows" id="tr-pos"></div></div>
+    <div class="sec" id="tr-ord-sec"><h3 class="sec-title">Open orders <span class="muted" id="tr-ord-n"></span><span class="grow"></span>
+      <button class="btn sm" id="tr-cancel-all" hidden>Cancel all</button></h3><div class="tr-rows" id="tr-ord"></div></div>
+    <div class="sec" id="tr-bal-sec"><h3 class="sec-title">Balances <span class="muted" id="tr-eq"></span></h3><div class="tr-rows" id="tr-bal"></div></div>
+    <div class="sec"><h3 class="sec-title">Today's limits <span class="muted">UTC day</span></h3><div class="tr-usage" id="tr-usage"></div>
+      <p class="note" id="tr-limits-note">Set in trading.toml. SAFETY_RAILS.md explains each one.</p></div>
+  </section>
   <section class="pane" id="pane-chat" aria-label="Ask Claude">
     <div class="pane-bar"><span class="pill" id="chat-model" hidden></span><span class="muted" id="chat-via"></span><span class="grow"></span>
       <button class="btn sm" id="chat-clear" title="Start a new conversation">Clear</button></div>
@@ -866,6 +981,7 @@
   <label class="lrow">Calendar events (1m to 1H) <input id="showcal" type="checkbox" class="switch" checked></label>
   <label class="lrow">Candle countdown <input id="showcount" type="checkbox" class="switch" checked></label>
   <label class="lrow">Market hours row <input id="showclock" type="checkbox" class="switch" checked></label>
+  <label class="lrow">My orders and positions <input id="showtrade" type="checkbox" class="switch" checked></label>
   <hr>
   <div class="legend">
     <div><div class="heatbar"></div><div class="heatlbl"><span>Smaller cluster</span><span>Larger cluster</span></div></div>
@@ -895,6 +1011,15 @@
   <button role="menuitem" id="dock-reset"><svg class="i" aria-hidden="true"><use href="#i-reset"/></svg>Reset panel layout</button>
   <p class="note">Drag this button onto an edge to move the panel. Drag tabs to reorder them or move them between sections.</p>
 </div>
+
+<dialog class="confirm" id="tr-confirm" aria-label="Confirm order">
+  <div class="cf-head"><span id="cf-title">Confirm order</span><span class="pill live" id="cf-env">LIVE</span></div>
+  <div class="cf-main" id="cf-main"></div>
+  <div class="cf-body" id="cf-body"></div>
+  <div class="cf-foot"><span class="muted" id="cf-exp"></span><span class="grow"></span>
+    <button class="btn" id="cf-cancel" type="button">Cancel</button>
+    <button class="btn" id="cf-ok" type="button">Confirm</button></div>
+</dialog>
 
 <script>
 // ---------- basics ----------
@@ -1832,6 +1957,7 @@ function renderDetail() {
       <span class="grow"></span>
       <button class="btn" id="op-line" aria-pressed="${showing}">${icon('crosshair')}${showing ? 'Hide strike on chart' : 'Show strike on chart'}</button>
       <button class="btn" id="op-ask">${icon('sparkle')}Ask Claude</button>
+      <button class="btn" id="op-trade" data-tip="Open this contract in the order ticket">${icon('trade')}Trade</button>
     </div>
     <div class="op-grid">
       ${kv('Expiry', `${opExpDate(c.expiry)}, ${new Date(c.exp_ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, opDays(c.exp_ms))}
@@ -1856,6 +1982,7 @@ function renderDetail() {
     ${renderPLCheck(d.powerlaw, c)}
   </div>`;
   $('op-line').onclick = () => toggleStrikeLine(c);
+  $('op-trade').onclick = () => trFill({ instId: c.name, px: c.mark, sz: 1, type: 'limit' });
   $('op-ask').onclick = () => {
     const premium = usdOf(c, c.mark, idx);
     send(`Analyze OKX option ${c.name} (${c.type === 'C' ? 'call' : 'put'}, strike $${c.strike.toLocaleString()}, expires ${new Date(c.exp_ms).toUTCString()}, ${opDays(c.exp_ms)} left). ` +
@@ -2834,16 +2961,374 @@ $('dlist-btn').onclick = e => { drList(); togglePopover($('pop-draws'), e.curren
   document.addEventListener('focusout', hide);
 })();
 
+// ---------- trading: OKX orders through the safety rails ----------
+// The server holds the keys and checks every order against trading.toml twice (at preview
+// and again before sending). This panel never talks to OKX directly.
+const TR = { token: '', st: null, acct: null, q: null, insts: [], inst: store.get('trInst', 'BTC-USDT-SWAP'),
+             side: store.get('trSide', 'buy'), type: store.get('trType', 'limit'), visible: false,
+             poll: null, qpoll: null, lines: [], preview: null, expTimer: null, busy: false };
+const TR_CHART = new Set(['BTC-USDT-SWAP', 'BTC-USD-SWAP', 'BTC-USDT', 'BTC-USDC']);   // priced like the chart
+
+async function trApi(path, body, retried = false) {
+  const headers = { 'X-Btcliq-Trade': TR.token };
+  const opt = body === undefined ? { headers }
+    : { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  const r = await fetch('/api/trade/' + path, opt);
+  if (r.status === 403 && !retried) { await trStatus(); return trApi(path, body, true); }   // server restarted: new token
+  const d = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (!r.ok) { const e = new Error(d.error || `HTTP ${r.status}`); e.data = d; e.status = r.status; throw e; }
+  return d;
+}
+async function trStatus() {
+  try {
+    const r = await fetch('/api/trade/status');
+    const d = await r.json();
+    TR.token = d.token || ''; TR.st = d;
+  } catch (e) { TR.st = null; }
+  renderTradeHead();
+  return TR.st;
+}
+const trTick = (v, tick) => { const t = +tick, dp = (String(tick).split('.')[1] || '').length; return (Math.round(v / t) * t).toFixed(dp); };
+const trPx = (v, ccy) => v == null ? '—' : ccy === 'BTC' ? `${(+v).toFixed(4)} BTC` : `$${num(+v, 2)}`;
+const trMoney = v => v == null ? '—' : `${v < 0 ? '−' : ''}$${num(Math.abs(v), Math.abs(v) >= 100 ? 0 : 2)}`;
+const trSigned = (v, d = 2) => v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${num(Math.abs(v), d)}`;
+
+function renderTradeHead() {
+  const st = TR.st, a = TR.acct, env = $('tr-env'), ban = $('tr-banner');
+  const on = !!(st && st.configured);
+  env.className = 'pill ' + (!on ? 'off' : st.halted ? 'live' : st.env === 'demo' ? 'demo' : 'live');
+  env.textContent = !st ? 'Offline' : !on ? 'Not connected' : `${st.env === 'demo' ? 'Demo' : 'Live'} · OKX`;
+  env.title = on ? (st.env === 'demo' ? 'Orders go to OKX demo trading (OKX_DEMO=1)' : 'Orders go to your real OKX account') : '';
+  $('tr-acct').textContent = a?.account ? [a.account.level, a.account.pos_mode === 'long_short_mode' ? 'long/short' : a.account.pos_mode === 'net_mode' ? 'net' : ''].filter(Boolean).join(' · ') : '';
+  $('tr-kill').hidden = !on;
+  let html = '';
+  if (!st) html = `<div class="tr-banner"><b>Can't reach the btcliq server</b></div>`;
+  else if (!on) html = `<div class="tr-banner"><b>Connect your OKX account</b>
+      1. On okx.com → API, create a key with <b style="display:inline">Read</b> and <b style="display:inline">Trade</b> only, bound to your IP.<br>
+      2. Put it in <code>.env</code>: <code>OKX_API_KEY</code>, <code>OKX_API_SECRET</code>, <code>OKX_API_PASSPHRASE</code>.<br>
+      3. <code>cp trading.example.toml trading.toml</code> and set your limits.<br>4. Restart btcliq. SAFETY_RAILS.md walks through it.</div>`;
+  else if (st.rails.error) html = `<div class="tr-banner"><b>Trading is off</b>${esc(st.rails.error)}</div>`;
+  else if (!st.rails.enabled) html = `<div class="tr-banner"><b>Trading is off</b>enabled = false in ${esc(st.rails.file.split('/').pop())}.</div>`;
+  if (st?.halted) html += `<div class="tr-banner halt"><b>⛔ Trading halted</b>${esc(st.halted.reason || 'Kill switch')}${st.halted.at ? ` · ${new Date(st.halted.at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}` : ''}.
+      ${st.rails.limits.halt.allow_closing ? 'Orders that close positions still go through.' : 'No orders go through until you resume.'}
+      <br><button class="btn sm" id="tr-resume" type="button">Resume trading</button></div>`;
+  ban.innerHTML = html;
+  $('tr-resume')?.addEventListener('click', async () => {
+    if (!confirm('Resume trading? New orders will be allowed again (still within your limits).')) return;
+    try { await trApi('resume', {}); await trRefresh(); } catch (e) { $('tr-err').textContent = e.message; }
+  });
+  $('tr-go').disabled = !on;
+  renderTradeUsage();
+}
+
+function renderTradeUsage() {
+  const st = TR.st;
+  if (!st) { $('tr-usage').innerHTML = ''; return; }
+  const d = st.rails.limits.daily, t = st.today;
+  const meter = (used, lim) => {
+    if (lim === 'off') return '';
+    const f = clamp(used / lim, 0, 1);
+    return `<div class="meter"><i class="${f >= 1 ? 'full' : f >= 0.75 ? 'hot' : ''}" style="width:${(f * 100).toFixed(1)}%"></i></div>`;
+  };
+  $('tr-usage').innerHTML = `
+    <span>Opening orders</span><b>${t.opening_orders}${d.max_orders === 'off' ? '' : ` / ${d.max_orders}`}</b>${meter(t.opening_orders, d.max_orders)}
+    <span>Opening volume</span><b>${trMoney(t.notional_usd)}${d.max_notional_usd === 'off' ? '' : ` / ${trMoney(d.max_notional_usd)}`}</b>${meter(t.notional_usd, d.max_notional_usd)}
+    <span>Loss stop</span><b>${d.max_loss_usd === 'off' ? 'off' : `−${trMoney(d.max_loss_usd)} realized`}</b>`;
+}
+
+function renderTradeAccount() {
+  const a = TR.acct;
+  for (const id of ['tr-pos-sec', 'tr-ord-sec', 'tr-bal-sec']) $(id).hidden = !(a && a.configured);
+  if (!a || !a.configured) { trBadge(0); trLines(); return; }
+  const errs = Object.entries(a.errors || {});
+  if (errs.length) $('tr-err').textContent = errs[0][1];
+  // positions
+  const pos = a.positions || [];
+  $('tr-pos-n').textContent = pos.length || '';
+  $('tr-pos').innerHTML = pos.length ? pos.map((p, i) => {
+    const long = p.posSide === 'long' || (p.posSide !== 'short' && p.pos > 0);
+    const sz = Math.abs(p.pos), ccy = p.type === 'OPTION' && p.instId.startsWith('BTC-USD-') ? 'BTC' : 'USD';
+    return `<div class="tr-row"><span class="nm">${esc(p.instId)}</span>
+      <span class="acts"><button class="btn sm" data-close="${i}" data-tip="Fill the ticket with an order that closes this position">Close</button></span>
+      <span class="sub"><span class="${long ? 'up' : 'dn'}">${long ? 'Long' : 'Short'} ${num(sz, 4)}</span> · avg ${trPx(p.avgPx, ccy)} · mark ${trPx(p.markPx, ccy)}
+        · <span class="${(p.upl || 0) >= 0 ? 'up' : 'dn'}">${trSigned(p.upl, ccy === 'BTC' || p.ccy === 'BTC' ? 6 : 2)} ${esc(p.ccy || '')}</span>
+        ${p.lever ? ` · ${num(p.lever, 1)}x` : ''}${p.liqPx ? ` · liq $${num(p.liqPx, 0)}` : ''}</span></div>`;
+  }).join('') : '<p class="empty">No open positions</p>';
+  $('tr-pos').querySelectorAll('[data-close]').forEach(b => b.onclick = () => {
+    const p = pos[+b.dataset.close];
+    const long = p.posSide === 'long' || (p.posSide !== 'short' && p.pos > 0);
+    trFill({ instId: p.instId, side: long ? 'sell' : 'buy', sz: Math.abs(p.pos), reduce: true, px: p.markPx });
+  });
+  // open orders
+  const ords = a.orders || [];
+  $('tr-ord-n').textContent = ords.length || '';
+  $('tr-cancel-all').hidden = ords.length < 2;
+  $('tr-ord').innerHTML = ords.length ? ords.map((o, i) => `<div class="tr-row"><span class="nm">${esc(o.instId)}</span>
+      <span class="acts"><button class="btn sm" data-cancel="${i}" aria-label="Cancel order">${icon('x')}</button></span>
+      <span class="sub"><span class="${o.side === 'buy' ? 'up' : 'dn'}">${o.side === 'buy' ? 'Buy' : 'Sell'} ${num(o.sz, 4)}</span>
+        @ ${o.px == null ? 'market' : num(o.px, 4)} · ${esc(o.ordType.replace('_', '-'))}${o.reduceOnly ? ' · reduce-only' : ''}${o.filled ? ` · filled ${num(o.filled, 4)}` : ''}</span></div>`).join('')
+    : '<p class="empty">No open orders</p>';
+  $('tr-ord').querySelectorAll('[data-cancel]').forEach(b => b.onclick = async () => {
+    const o = ords[+b.dataset.cancel];
+    b.disabled = true;
+    try { await trApi('cancel', { instId: o.instId, ordId: o.ordId }); trToast(`Canceled ${o.side} ${num(o.sz, 4)} ${o.instId}`); }
+    catch (e) { $('tr-err').textContent = e.message; }
+    trRefresh();
+  });
+  trBadge(ords.length);
+  // balances
+  $('tr-eq').textContent = a.account?.total_eq_usd != null ? `equity ${trMoney(a.account.total_eq_usd)}` : '';
+  const bal = a.balances || [];
+  $('tr-bal').innerHTML = bal.length ? bal.map(b => `<div class="tr-row"><span class="nm">${esc(b.ccy)}</span><span class="r">${trMoney(b.eq_usd)}</span>
+      <span class="sub">${num(b.eq, 8)} · available ${num(b.avail, 8)}${b.frozen ? ` · in orders ${num(b.frozen, 8)}` : ''}</span><span></span></div>`).join('')
+    : '<p class="empty">No balances</p>';
+  trLines();
+}
+function trBadge(n) { const b = document.querySelector('.dtab[data-pane="trade"] .badge'); if (b) b.textContent = n || ''; TR.badge = n; }
+
+// Your BTC perp and spot orders and positions as lines on the chart.
+function trLines() {
+  for (const l of TR.lines) candles.removePriceLine(l);
+  TR.lines = [];
+  const a = TR.acct;
+  if (!a || !a.configured || !$('showtrade').checked) return;
+  const dashed = LightweightCharts.LineStyle.Dashed, solid = LightweightCharts.LineStyle.Solid;
+  for (const o of a.orders || []) {
+    if (!TR_CHART.has(o.instId) || o.px == null) continue;
+    TR.lines.push(candles.createPriceLine({ price: o.px, color: o.side === 'buy' ? C('--up') : C('--down'), lineWidth: 1,
+      lineStyle: dashed, axisLabelVisible: true, title: `${o.side === 'buy' ? 'Buy' : 'Sell'} ${num(o.sz, 4)}` }));
+  }
+  for (const p of a.positions || []) {
+    if (!TR_CHART.has(p.instId) || !p.avgPx) continue;
+    const long = p.posSide === 'long' || (p.posSide !== 'short' && p.pos > 0);
+    TR.lines.push(candles.createPriceLine({ price: p.avgPx, color: C('--accent'), lineWidth: 1, lineStyle: solid,
+      axisLabelVisible: true, title: `${long ? 'Long' : 'Short'} ${num(Math.abs(p.pos), 4)} entry` }));
+    if (p.liqPx) TR.lines.push(candles.createPriceLine({ price: p.liqPx, color: C('--warn'), lineWidth: 1, lineStyle: dashed,
+      axisLabelVisible: true, title: 'Liquidation' }));
+  }
+}
+
+async function trRefresh() {
+  await trStatus();
+  if (!TR.st?.configured) { TR.acct = TR.st; renderTradeAccount(); return; }
+  try { TR.acct = await trApi('account'); TR.st = { ...TR.st, ...TR.acct, token: TR.token }; $('tr-err').textContent = ''; }
+  catch (e) { $('tr-err').textContent = e.message; }
+  renderTradeHead(); renderTradeAccount();
+}
+function trSchedule() {
+  clearTimeout(TR.poll);
+  // Fast while the panel is open; slow otherwise (keeps chart lines and the tab badge current).
+  const ms = TR.visible ? 4000 : 20000;
+  TR.poll = setTimeout(async () => { if (!document.hidden && TR.st?.configured) await trRefresh(); trSchedule(); }, ms);
+}
+function setTradeVisible(v) {
+  if (v === TR.visible) return;
+  TR.visible = v;
+  trSchedule();
+  clearInterval(TR.qpoll);
+  if (v) { trRefresh(); trQuote(); TR.qpoll = setInterval(() => !document.hidden && trQuote(true), 3000); }
+}
+
+// ---------- ticket ----------
+function trSetSide(s) { TR.side = s; store.set('trSide', s);
+  document.querySelectorAll('.tr-side button').forEach(b => { b.classList.toggle('on', b.dataset.side === s); b.setAttribute('aria-pressed', String(b.dataset.side === s)); });
+  trGoLabel(); trSizeInfo(); }
+function trSetType(t) {
+  if (t === 'market' && TR.q?.type === 'OPTION') t = 'limit';
+  TR.type = t; store.set('trType', t);
+  $('tr-type').querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.t === t); b.setAttribute('aria-pressed', String(b.dataset.t === t)); });
+  $('tr-px-row').hidden = $('tr-quick').hidden = t === 'market';
+  trSizeInfo();
+}
+function trGoLabel() { $('tr-go').textContent = `Preview ${TR.side === 'buy' ? 'buy' : 'sell'}`; }
+async function trQuote(quiet = false) {
+  const id = $('tr-inst').value.trim().toUpperCase();
+  if (!id || !TR.token) return;
+  try {
+    const q = await trApi('quote?instId=' + encodeURIComponent(id));
+    const changed = !TR.q || TR.q.instId !== q.instId;
+    TR.q = q; TR.inst = q.instId; store.set('trInst', q.instId);
+    $('tr-about').textContent = q.about + ` · tick ${q.tick} · min ${q.min}`;
+    $('tr-pxu').textContent = q.price_ccy === 'BTC' ? 'BTC' : q.type === 'SPOT' ? (q.instId.split('-')[1]) : 'USD';
+    $('tr-szu').textContent = q.size_unit === 'BTC' ? 'BTC' : 'contracts';
+    $('tr-sz').step = q.lot; $('tr-sz').placeholder = `min ${q.min}`;
+    $('tr-type').querySelector('[data-t="market"]').disabled = q.type === 'OPTION';
+    if (q.type === 'OPTION' && TR.type === 'market') trSetType('limit');
+    if (changed && q.mark != null && (!$('tr-px').value || !quiet)) $('tr-px').value = trTick(q.mark, q.tick);
+    if (!quiet) $('tr-err').textContent = '';
+    const f = v => v == null ? '—' : q.price_ccy === 'BTC' ? (+v).toFixed(4) : num(+v, 2);
+    $('tr-quote').innerHTML = `<span>Bid <b class="up">${f(q.bid)}</b></span><span>Ask <b class="dn">${f(q.ask)}</b></span><span>Mark <b>${f(q.mark)}</b></span>`
+      + (q.index ? `<span>Index <b>${num(q.index, 1)}</b></span>` : '');
+    trSizeInfo();
+  } catch (e) {
+    if (!quiet) { TR.q = null; $('tr-about').textContent = ''; $('tr-quote').innerHTML = ''; $('tr-err').textContent = e.message; }
+  }
+}
+function trSizeInfo() {
+  const q = TR.q, sz = parseFloat($('tr-sz').value);
+  if (!q || !(sz > 0)) { $('tr-szinfo').textContent = ''; return; }
+  const px = TR.type === 'market' ? (TR.side === 'buy' ? q.ask : q.bid) ?? q.mark : parseFloat($('tr-px').value) || q.mark;
+  let btc, val;
+  if (q.type === 'SPOT') { btc = sz; val = sz * px; }
+  else if (q.usd_per) { val = sz * q.usd_per; btc = q.index ? val / q.index : null; }
+  else { btc = sz * q.btc_per; val = btc * (q.type === 'OPTION' ? q.index : px); }
+  let txt = `≈ ${btc == null ? '—' : btc.toFixed(4)} BTC · ${trMoney(val)}`;
+  if (q.type === 'OPTION' && px) {
+    const prem = sz * q.btc_per * px * (q.price_ccy === 'BTC' ? q.index : 1);
+    txt += ` · premium ${trMoney(prem)}`;
+  }
+  $('tr-szinfo').textContent = txt;
+}
+// Fill the ticket from elsewhere (contract card, a position's Close button).
+function trFill({ instId, side, sz, px, reduce = false, type }) {
+  dockShow('trade');
+  if (instId) $('tr-inst').value = instId;
+  if (side) trSetSide(side);
+  if (type) trSetType(type);
+  $('tr-sz').value = sz != null ? sz : '';
+  $('tr-reduce').checked = !!reduce;
+  TR.q = null;
+  trQuote().then(() => { if (px != null && TR.q) $('tr-px').value = trTick(px, TR.q.tick); trSizeInfo(); $('tr-sz').focus(); });
+}
+
+async function trPreview(e) {
+  e?.preventDefault();
+  if (TR.busy) return;
+  $('tr-err').textContent = '';
+  const body = { instId: $('tr-inst').value.trim().toUpperCase(), side: TR.side, ordType: TR.type,
+                 sz: $('tr-sz').value.trim(), reduce: $('tr-reduce').checked };
+  if (TR.type !== 'market') body.px = $('tr-px').value.trim();
+  if (!body.instId) { $('tr-err').textContent = 'Pick an instrument'; return; }
+  if (!body.sz) { $('tr-err').textContent = 'Enter a size'; $('tr-sz').focus(); return; }
+  TR.busy = true; $('tr-go').disabled = true;
+  try { trConfirm(await trApi('preview', body)); }
+  catch (err) { $('tr-err').textContent = err.message; }
+  finally { TR.busy = false; $('tr-go').disabled = !TR.st?.configured; }
+}
+
+function trConfirm(p) {
+  TR.preview = p;
+  const o = p.okx_order, n = p.numbers, i = p.instrument, q = p.market, pos = p.position;
+  const buy = o.side === 'buy', unit = i.size_unit === 'BTC' ? 'BTC' : (+o.sz === 1 ? 'contract' : 'contracts');
+  const ccy = i.price_ccy;
+  $('cf-title').textContent = p.blocked ? 'Blocked by your safety rails' : 'Confirm order';
+  $('cf-env').className = 'pill ' + (p.env === 'demo' ? 'demo' : 'live');
+  $('cf-env').textContent = p.env === 'demo' ? 'DEMO' : 'LIVE';
+  $('cf-main').innerHTML = `<span class="${buy ? 'up' : 'dn'}">${buy ? 'Buy' : 'Sell'}</span> ${esc(o.sz)} ${unit} ${esc(i.instId)}
+    <br>${o.ordType === 'market' ? 'at market' : `@ ${trPx(o.px, ccy)}`} <span class="muted" style="font-size:var(--fs-2);font-weight:400">${esc(o.ordType.replace('_', '-'))}
+    · ${esc(o.tdMode)}${o.posSide ? ' · ' + esc(o.posSide) : ''}${o.reduceOnly ? ' · reduce-only' : ''}</span>
+    <span class="about">${esc(i.about)} · ${esc(p.account.level)}</span>`;
+  const kv = (label, val, sub = '', cls = '') => `<div class="kv ${cls}"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const cells = [kv('Order value', trMoney(n.notional_usd), n.btc ? `${n.btc.toFixed(4)} BTC` : '')];
+  if (n.premium_usd != null) cells.push(kv(buy ? 'Premium you pay' : 'Premium you receive', trMoney(n.premium_usd), ccy === 'BTC' && n.premium_native ? `${n.premium_native.toFixed(6)} BTC` : ''));
+  cells.push(kv('Est. fee', n.fee_usd == null ? '—' : trMoney(n.fee_usd), n.fee_rate != null ? `${(n.fee_rate * 100).toFixed(3)}%` : ''));
+  if (n.margin_usd != null) cells.push(kv('Margin', trMoney(n.margin_usd), `${num(n.leverage, 1)}x`));
+  if (n.breakeven) cells.push(kv('Breakeven at expiry', '$' + num(n.breakeven, 0)));
+  if (pos && 'contracts' in pos) cells.push(kv('Position', `${trSigned(pos.contracts, 4)} → ${trSigned(pos.after, 4)}`, pos.closing ? 'closing' : ''));
+  if (n.worst_case) cells.push(kv('Worst case', n.worst_case_usd != null ? trMoney(n.worst_case_usd) : '', esc(n.worst_case), 'wide'));
+  const f = v => v == null ? '—' : ccy === 'BTC' ? (+v).toFixed(4) : num(+v, 2);
+  cells.push(kv('Market now', `${f(q.bid)} / ${f(q.ask)}`, `bid / ask · mark ${f(q.mark)}`, 'wide'));
+  const failed = p.checks.filter(c => !c.ok), passed = p.checks.filter(c => c.ok);
+  $('cf-body').innerHTML = `<div class="cf-grid">${cells.join('')}</div>
+    ${p.warnings.map(w => `<div class="cf-warn">⚠️ ${esc(w)}</div>`).join('')}
+    <div class="cf-checks">${failed.map(c => `<div><span class="no">✕</span><span class="bad">${esc(c.msg)}</span></div>`).join('')}
+      ${passed.map(c => `<div><span class="ok">✓</span><span class="muted">${esc(c.msg)}</span></div>`).join('')}</div>
+    <div class="err" id="cf-err"></div>`;
+  const ok = $('cf-ok');
+  ok.className = 'btn ' + (p.blocked ? '' : buy ? 'go-buy' : 'go-sell');
+  ok.disabled = p.blocked;
+  ok.textContent = p.blocked ? 'Blocked' : `${buy ? 'Buy' : 'Sell'} ${o.sz} ${unit}`;
+  clearInterval(TR.expTimer);
+  const tick = () => {
+    if (p.blocked) { $('cf-exp').textContent = 'Fix the ✕ items, then preview again'; return; }
+    const left = Math.round(p.expires - Date.now() / 1000);
+    if (left <= 0) { $('cf-exp').textContent = 'Expired: preview again'; ok.disabled = true; clearInterval(TR.expTimer); return; }
+    $('cf-exp').textContent = `Expires in ${left}s · rails re-checked on confirm`;
+  };
+  tick(); TR.expTimer = setInterval(tick, 1000);
+  const dlg = $('tr-confirm');
+  if (!dlg.open) dlg.showModal();
+  $('cf-cancel').focus();   // Enter never confirms by accident
+}
+async function trPlace() {
+  const p = TR.preview;
+  if (!p || p.blocked || TR.busy) return;
+  TR.busy = true; $('cf-ok').disabled = true; $('cf-ok').textContent = 'Sending…';
+  try {
+    const r = await trApi('place', { id: p.id });
+    $('tr-confirm').close();
+    const o = p.okx_order;
+    trToast(`${o.side === 'buy' ? 'Buy' : 'Sell'} order sent: ${o.sz} ${p.instrument.instId} ${o.ordType === 'market' ? 'at market' : '@ ' + o.px} · order ${r.ordId}`, o.side === 'buy' ? 'short' : 'long');
+    trRefresh();
+  } catch (e) {
+    if (e.data?.preview) { trConfirm({ ...e.data.preview, id: p.id, expires: 0, blocked: true }); }
+    else { $('cf-err').textContent = e.message; $('cf-ok').textContent = 'Failed'; }
+  } finally { TR.busy = false; }
+}
+function trToast(text, kind = '') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.textContent = text;
+  $('toasts').prepend(el);
+  while ($('toasts').children.length > 3) $('toasts').lastElementChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 450); }, 8000);
+}
+
+$('tr-form').addEventListener('submit', trPreview);
+document.querySelectorAll('.tr-side button').forEach(b => b.onclick = () => trSetSide(b.dataset.side));
+$('tr-type').querySelectorAll('button').forEach(b => b.onclick = () => trSetType(b.dataset.t));
+$('tr-quick').querySelectorAll('button').forEach(b => b.onclick = () => {
+  const q = TR.q; if (!q) return;
+  const v = b.dataset.q === 'mid' ? (q.bid != null && q.ask != null ? (q.bid + q.ask) / 2 : q.mark) : q[b.dataset.q];
+  if (v != null) { $('tr-px').value = trTick(v, q.tick); trSizeInfo(); }
+});
+$('tr-inst').addEventListener('change', () => { TR.q = null; trQuote(); });
+$('tr-inst').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); TR.q = null; trQuote(); } });
+for (const id of ['tr-px', 'tr-sz']) $(id).addEventListener('input', trSizeInfo);
+$('cf-cancel').onclick = () => $('tr-confirm').close();
+$('cf-ok').onclick = trPlace;
+$('tr-confirm').addEventListener('close', () => { clearInterval(TR.expTimer); TR.preview = null; });
+$('tr-cancel-all').onclick = async () => {
+  const n = TR.acct?.orders?.length || 0;
+  if (!confirm(`Cancel all ${n} open orders?`)) return;
+  try { const r = await trApi('cancel-all', {}); trToast(`Canceled ${r.canceled} of ${r.found} open orders`); }
+  catch (e) { $('tr-err').textContent = e.message; }
+  trRefresh();
+};
+$('tr-kill').onclick = async () => {
+  const n = TR.acct?.orders?.length || 0;
+  if (!confirm(`Kill switch: halt trading and cancel ${n ? `all ${n}` : 'any'} open orders?\n\nPositions stay open. New orders are refused until you resume`
+               + (TR.st?.rails?.limits?.halt?.allow_closing ? ' (closing orders still go through).' : '.'))) return;
+  try {
+    const r = await trApi('kill', { reason: 'Kill switch (browser)' });
+    trToast(`⛔ Trading halted · canceled ${r.canceled ?? 0} of ${r.found ?? 0} open orders`, 'long');
+  } catch (e) { $('tr-err').textContent = e.message; }
+  trRefresh();
+};
+{ const el = $('showtrade'), v = store.get('showTrade', null);
+  if (v != null) el.checked = v === '1';
+  el.addEventListener('change', () => { store.set('showTrade', el.checked ? '1' : '0'); trLines(); }); }
+$('tr-inst').value = TR.inst;
+trSetSide(TR.side); trSetType(TR.type);
+trStatus().then(st => {
+  if (!st?.token) return;
+  trApi('instruments').then(list => { TR.insts = list;
+    $('tr-insts').innerHTML = list.map(i => `<option value="${esc(i.instId)}">${esc(i.label)}</option>`).join(''); }).catch(() => {});
+  if (st.configured) trRefresh();
+  trSchedule();
+});
+
 // ---------- side panel: dockable, resizable, tabs you can rearrange ----------
 const PANES = {
   book:   { label: 'Book',   icon: 'book' },
   market: { label: 'Market', icon: 'pulse' },
   news:   { label: 'News',   icon: 'news' },
+  trade:  { label: 'Trade',  icon: 'trade' },
   chat:   { label: 'Claude', icon: 'sparkle' },
 };
 // Claude is the tab used least, so it starts last in a single full-height section.
 const DOCK_DEFAULT = { side: 'right', sidePx: 370, bottomPx: 340, split: 0.6,
-                       secs: [['book', 'market', 'news', 'chat'], []], active: ['book', null], mActive: null };
+                       secs: [['book', 'market', 'news', 'trade', 'chat'], []], active: ['book', null], mActive: null };
 const OLD_DEFAULT_SECS = '[["book","market","news"],["chat"]]';   // the earlier default, with Claude alone below
 const DOCK = (() => {
   const out = structuredClone(DOCK_DEFAULT);
@@ -2857,7 +3342,10 @@ const DOCK = (() => {
     Object.assign(out, d);
     const seen = new Set();
     out.secs = d.secs.map(s => (Array.isArray(s) ? s : []).filter(k => PANES[k] && !seen.has(k) && seen.add(k)));
-    for (const k of Object.keys(PANES)) if (!seen.has(k)) out.secs[0].push(k);
+    for (const k of Object.keys(PANES)) if (!seen.has(k)) {   // a new tab: just before Claude, which stays last
+      const s = out.secs.find(s => s.includes('chat')) || out.secs[0], at = s.indexOf('chat');
+      s.splice(at < 0 ? s.length : at, 0, k);
+    }
     if (!['left', 'right', 'bottom'].includes(out.side)) out.side = 'right';
     if (!Array.isArray(out.active) || out.active.length !== 2) out.active = [...DOCK_DEFAULT.active];
   } else {
@@ -2893,7 +3381,7 @@ function renderDock() {
     const sec = $('dsec' + i), keys = L.secs[i], bar = sec.querySelector('.dtabs'), body = sec.querySelector('.dbody');
     sec.hidden = !keys.length;
     bar.innerHTML = keys.map(k => `<button class="dtab" role="tab" data-pane="${k}" aria-selected="${k === L.active[i]}"
-        title="${PANES[k].label}: click to open, drag to move">${icon(PANES[k].icon)}<span class="lbl">${PANES[k].label}</span>${k === 'news' ? `<span class="badge">${NEWS.unread || ''}</span>` : ''}</button>`).join('')
+        title="${PANES[k].label}: click to open, drag to move">${icon(PANES[k].icon)}<span class="lbl">${PANES[k].label}</span>${k === 'news' ? `<span class="badge">${NEWS.unread || ''}</span>` : k === 'trade' ? `<span class="badge" title="Open orders">${TR.badge || ''}</span>` : ''}</button>`).join('')
       + `<span class="dfill"></span>`
       + (i === first ? `<button class="ibtn" id="dock-move" data-tip="Move panel: drag onto an edge, or click for options" aria-label="Move panel" aria-haspopup="menu" aria-expanded="false">${icon('dock-' + side)}</button>` : '');
     for (const k of keys) {
@@ -2912,6 +3400,7 @@ function renderDock() {
   applyDockSize();
   setBookOpen(paneShown('book'));
   setNewsVisible(paneShown('news'));
+  setTradeVisible(paneShown('trade'));
   if (paneShown('chat')) scrollDown();
   dockShape = side + (isMerged() ? '-m' : '');
 }

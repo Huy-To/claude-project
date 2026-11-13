@@ -236,6 +236,46 @@ Data refreshes every 10 seconds while the panel is open. With the panel in use, 
 chat also gets a summary of the option market (put/call open interest, ATM IV per expiry,
 strikes with the most open interest).
 
+## Trading on OKX
+
+The **Trade** tab (side panel) and the `btcliq-trade` command place real orders on your OKX
+account: BTC options, perpetuals, dated futures and spot. Both go through the same
+**safety rails**, your limits in `trading.toml`, and every order takes two steps: a preview showing
+the order value, premium, fees, worst case and each limit check, then a confirmation that
+re-checks everything with fresh prices before sending.
+
+**Setup (once):** create an OKX API key with **Read + Trade** only, bound to your IP; add
+`OKX_API_KEY`, `OKX_API_SECRET` and `OKX_API_PASSPHRASE` to `.env`; run
+`cp trading.example.toml trading.toml` and set your limits; restart btcliq.
+**[SAFETY_RAILS.md](SAFETY_RAILS.md) walks through every step and setting, with example profiles.**
+
+- **Order ticket:** type or pick an instrument (the options contract card has a **Trade** button
+  that fills it in), choose buy or sell, limit / post-only / IOC / market, price (Bid, Mid, Ask and
+  Mark fill it), size in contracts (BTC for spot) and *Reduce only* to close. The line under the size
+  shows what it's worth in BTC and USD, plus the premium for options.
+- **Confirm dialog:** the exact order, its numbers and every rail (✓ or ✕). A single ✕ disables
+  Confirm. The preview expires after a minute.
+- **Positions, open orders, balances** refresh every few seconds while the tab is open. **Close**
+  fills the ticket with an order that closes that position; × cancels an order. The tab's badge
+  counts open orders.
+- **On the chart:** your open orders on BTC perps and spot are dashed lines (green buy, red sell);
+  positions show their entry (blue) and liquidation price (amber). Layers → My orders and positions.
+- **Kill switch** (top of the tab): halts trading and cancels every open order. Positions stay
+  open. **Resume trading** lifts it.
+- **Today's limits** shows today's opening orders and volume against your daily caps.
+
+From a terminal or your Claude Code trading session (JSON output; `--text` for readable lines):
+
+```bash
+btcliq-trade status                                          # keys, permissions, limits, halt
+btcliq-trade account                                         # balances, positions, orders, fills
+btcliq-trade preview BTC-USD-261127-75000-C buy 2 --px 0.015 # prints an id; exit code 2 = blocked
+btcliq-trade place <id>
+btcliq-trade kill --reason "news"                            # / resume
+```
+
+Every order attempt, cancel and halt is logged to `data/trade_journal.jsonl`.
+
 ## Telegram news
 
 Open the **News** tab in the side panel to follow public Telegram channels.
