@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 from .okx_private import OKXError, OKXNotConfigured
-from .trader import OrderInputError, RailsBlocked, Trader
+from .trader import NeedsApproval, OrderInputError, RailsBlocked, Trader
 
 log = logging.getLogger("btcliq")
 LOCAL = ("localhost", "127.0.0.1", "[::1]", "::1")
@@ -47,6 +47,8 @@ async def trade_guard(req: web.Request, handler):
             return web.json_response({"error": "Missing or stale trade token: reload the page"}, status=403)
     try:
         return await handler(req)
+    except NeedsApproval as e:
+        return web.json_response({"error": str(e), "needs_approval": e.missing, "preview": e.preview}, status=409)
     except RailsBlocked as e:
         return web.json_response({"error": str(e), "blocked": True, "preview": e.preview}, status=409)
     except OrderInputError as e:
@@ -105,7 +107,10 @@ async def preview(req):
 
 async def place(req):
     b = await _body(req)
-    return web.json_response(await _trader(req).place(str(b.get("id", "")), source="ui"))
+    accept = b.get("accept") or []
+    if not isinstance(accept, list):
+        raise OrderInputError("accept must be a list of rule names")
+    return web.json_response(await _trader(req).place(str(b.get("id", "")), source="ui", accept=[str(a) for a in accept]))
 
 
 async def cancel(req):

@@ -254,7 +254,8 @@ re-checks everything with fresh prices before sending.
   Mark fill it), size in contracts (BTC for spot) and *Reduce only* to close. The line under the size
   shows what it's worth in BTC and USD, plus the premium for options.
 - **Confirm dialog:** the exact order, its numbers and every rail (✓ or ✕). A single ✕ disables
-  Confirm. The preview expires after a minute.
+  Confirm. Option rules you've set to *ask* (`[option] ask` in `trading.toml`) show in amber with a
+  **Place anyway** box instead: Confirm unlocks once you tick each one. The preview expires after a minute.
 - **Positions, open orders, balances** refresh every few seconds while the tab is open. **Close**
   fills the ticket with an order that closes that position; × cancels an order. The tab's badge
   counts open orders.

@@ -44,6 +44,15 @@ class RailsBlocked(Exception):
         super().__init__("Blocked by the safety rails: " + "; ".join(failed))
 
 
+class NeedsApproval(Exception):
+    """Every hard rail passed, but rules set to "ask" in trading.toml failed and weren't accepted."""
+    def __init__(self, preview: dict, missing: list[str]):
+        self.preview, self.missing = preview, missing
+        msgs = [c["msg"] for c in preview["checks"] if c["rule"] in missing]
+        super().__init__("Needs your approval: " + "; ".join(msgs)
+                         + f". To go ahead anyway, accept: {','.join(missing)}")
+
+
 class OrderInputError(ValueError):
     pass
 
@@ -523,6 +532,7 @@ class Trader:
             "position": {**(before or {}), "closing": closing},
             "checks": checks,
             "blocked": R.blocked(checks),
+            "asks": R.asks(checks),
             "warnings": warnings,
         }
 
@@ -533,12 +543,13 @@ class Trader:
         p["id"], p["expires"] = pid, time.time() + ttl
         p["summary"] = summarize(p)
         self.previews.put(pid, {"request": p["request"], "expires": p["expires"], "source": source,
-                                "okx_order": p["okx_order"], "blocked": p["blocked"]})
+                                "okx_order": p["okx_order"], "blocked": p["blocked"], "asks": p["asks"]})
         return p
 
     # ---------- place, cancel, halt ----------
 
-    async def place(self, pid: str, source: str = "ui") -> dict:
+    async def place(self, pid: str, source: str = "ui", accept=()) -> dict:
+        """Send a previewed order. `accept` lists the "ask" rules you approve going past."""
         async with self._lock:
             entry = self.previews.take(pid)
             if not entry:
@@ -555,12 +566,20 @@ class Trader:
                 self.journal.add({"kind": "order", "status": "blocked", "source": source, "instId": p["request"]["instId"],
                                   "checks": [c for c in p["checks"] if not c["ok"]]})
                 raise RailsBlocked(p)
+            missing = [r for r in p["asks"] if r not in set(accept or ())]
+            if missing:
+                self.journal.add({"kind": "order", "status": "needs_approval", "source": source,
+                                  "instId": p["request"]["instId"], "missing": missing})
+                self.previews.put(pid, entry)          # keep it, so you can approve and confirm again
+                p["id"], p["expires"] = pid, entry["expires"]
+                raise NeedsApproval(p, missing)
             body = dict(p["okx_order"])
             body["clOrdId"] = "btcliq" + pid
             base = {"kind": "order", "source": source, "instId": body["instId"], "side": body["side"],
                     "sz": body["sz"], "px": body.get("px"), "ordType": body["ordType"], "clOrdId": body["clOrdId"],
                     "notional_usd": p["numbers"]["notional_usd"], "premium_usd": p["numbers"]["premium_usd"],
-                    "closing": p["position"]["closing"], "env": self.okx.env_label}
+                    "closing": p["position"]["closing"], "env": self.okx.env_label,
+                    "approved": p["asks"] or None}
             try:
                 d = await self.okx.post("/api/v5/trade/order", body)
             except OKXError as e:
@@ -591,7 +610,7 @@ class Trader:
         self.journal.add({"kind": "cancel", "source": source, "instId": inst_id, "ordId": ord_id})
         return {"ok": True, "ordId": (d[0] if d else {}).get("ordId", ord_id)}
 
-    async def amend(self, inst_id: str, ord_id: str, new_px=None, new_sz=None, source: str = "ui") -> dict:
+    async def amend(self, inst_id: str, ord_id: str, new_px=None, new_sz=None, source: str = "ui", accept=()) -> dict:
         """Change price or size of a resting order. Bigger sizes and new prices go through the rails."""
         pend = await self.okx.get("/api/v5/trade/orders-pending", instId=inst_id)
         cur = next((o for o in pend if o.get("ordId") == ord_id), None)
@@ -605,6 +624,9 @@ class Trader:
         p["checks"] = [c for c in p["checks"] if c["rule"] != "order.max_open_orders"]
         if R.blocked(p["checks"]):
             raise RailsBlocked(p)
+        missing = [r for r in R.asks(p["checks"]) if r not in set(accept or ())]
+        if missing:
+            raise NeedsApproval(p, missing)
         body = {"instId": inst_id, "ordId": ord_id}
         if new_px is not None:
             body["newPx"] = p["okx_order"]["px"]
@@ -744,6 +766,11 @@ def summarize(p: dict) -> list[str]:
     for w in p["warnings"]:
         lines.append("! " + w)
     for c in p["checks"]:
-        lines.append(("  ok  " if c["ok"] else "  NO  ") + c["msg"])
-    lines.append("BLOCKED by the safety rails" if p["blocked"] else "Passes every rail")
+        lines.append(("  ok  " if c["ok"] else "  ASK " if c.get("ask") else "  NO  ") + c["msg"])
+    if p["blocked"]:
+        lines.append("BLOCKED by the safety rails")
+    elif p.get("asks"):
+        lines.append("NEEDS YOUR APPROVAL for: " + ", ".join(p["asks"]))
+    else:
+        lines.append("Passes every rail")
     return lines

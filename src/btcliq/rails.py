@@ -7,6 +7,8 @@ blocks the order. See SAFETY_RAILS.md for what each setting does, with examples.
 - Limits live in trading.toml (next to .env). No file, or a file with a mistake in it,
   means no trading at all: an order is never sent under limits you didn't write.
 - The file is re-read whenever it changes, so edits apply without a restart.
+- Rules listed in [option] ask don't block option orders: they need your approval instead
+  (a "Place anyway" tick in the browser, or --accept on the command line).
 - Closing orders (ones that only shrink a position) always get through the "stop" rails:
   the halt switch, the daily caps, the leverage and position caps. Size and price checks
   still apply to them.
@@ -50,6 +52,7 @@ DEFAULTS: dict = {
         "price_band_pct": 30,          # option quotes are wide, so the band is wider
         "allow_selling_to_open": False,
         "max_position_contracts": 30,  # per contract, after the order fills
+        "ask": [],                     # rules that ask for approval on option orders instead of blocking
     },
     "swap": {
         "max_order_usd": OFF,          # tighter per-order cap for perps than [order], if wanted
@@ -72,6 +75,11 @@ DEFAULTS: dict = {
         "spot_mode": "auto",            # auto, cash or cross
     },
 }
+# Rules that [option] ask can turn from "block" into "ask me". The master switch, the BTC-only
+# rule, the halt and the cooldown always block.
+ASKABLE = ("price_band_pct", "daily.max_orders", "daily.max_notional_usd", "daily.max_loss_usd",
+           "option.allow_selling_to_open", "option.max_contracts", "option.max_premium_usd",
+           "option.max_position_contracts", "order.max_notional_usd", "order.max_open_orders")
 CHOICES = {("account", "derivatives_margin"): ("cross", "isolated"),
            ("account", "spot_mode"): ("auto", "cash", "cross")}
 
@@ -120,6 +128,14 @@ def parse_config(raw: dict) -> dict:
             for k, v in value.items():
                 if k not in default:
                     raise RailsConfigError(f"unknown setting {k!r} in [{key}] (check the spelling against SAFETY_RAILS.md)")
+                if (key, k) == ("option", "ask"):
+                    if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+                        raise RailsConfigError('option.ask must be a list like ["price_band_pct", "daily.max_orders"]')
+                    bad = [x for x in v if x not in ASKABLE]
+                    if bad:
+                        raise RailsConfigError(f"option.ask: {bad[0]!r} can't ask for approval (choose from {', '.join(ASKABLE)})")
+                    cfg[key][k] = list(dict.fromkeys(v))
+                    continue
                 v = _check_value(f"{key}.{k}", default[k], v)
                 if (key, k) in CHOICES and v not in CHOICES[(key, k)]:
                     raise RailsConfigError(f"{key}.{k} must be one of {', '.join(CHOICES[(key, k)])}")
@@ -309,8 +325,17 @@ def evaluate(cfg: dict, o: dict, usage: dict) -> list[dict]:
     else:
         band = _lim(sec.get("price_band_pct", order["price_band_pct"]))
         if band is not None and o.get("band_pct") is not None:
-            rule("price_band_pct", abs(o["band_pct"]) <= band,
-                 f"Limit price is {o['band_pct']:+.1f}% from mark (band ±{band:g}%)")
+            b = o["band_pct"]
+            passive = (o["side"] == "buy" and b < 0) or (o["side"] == "sell" and b > 0)
+            if abs(b) <= band:
+                msg = f"Limit price is {b:+.1f}% from mark (band ±{band:g}%)"
+            elif passive:
+                msg = (f"{o['side'].capitalize()} price is {b:+.1f}% from mark (band ±{band:g}%): it will rest in the "
+                       "book until the market gets there")
+            else:
+                msg = (f"{o['side'].capitalize()} price is {b:+.1f}% from mark (band ±{band:g}%): you'd "
+                       + ("pay well above" if o["side"] == "buy" else "sell well below") + " what it's worth. A typo?")
+            rule("price_band_pct", abs(b) <= band, msg)
 
     # --- account-wide ---
     mo = _lim(order["max_open_orders"])
@@ -354,8 +379,22 @@ def evaluate(cfg: dict, o: dict, usage: dict) -> list[dict]:
             if mp is not None and o.get("post_position_usd") is not None:
                 rule(f"{TYPE_SECTION[t]}.max_position_usd", o["post_position_usd"] <= mp,
                      f"Position after fill {_fmt_usd(o['post_position_usd'])} (limit {_fmt_usd(mp)})")
+    if t == "OPTION":
+        ask = set(cfg["option"].get("ask") or [])
+        for c in out:
+            if not c["ok"] and c["rule"] in ask:
+                c["ask"] = True
+                if c["rule"] == "option.allow_selling_to_open":
+                    c["msg"] = ("This sells options you don't own, opening a short position: "
+                                "you could lose much more than the premium (see the worst case)")
     return out
 
 
 def blocked(checks: list[dict]) -> bool:
-    return any(not c["ok"] for c in checks)
+    """Failed rules that can't be approved."""
+    return any(not c["ok"] and not c.get("ask") for c in checks)
+
+
+def asks(checks: list[dict]) -> list[str]:
+    """Failed rules waiting for your approval."""
+    return [c["rule"] for c in checks if not c["ok"] and c.get("ask")]

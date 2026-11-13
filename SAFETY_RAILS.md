@@ -113,6 +113,7 @@ Then edit it. A few rules:
 | `price_band_pct` | `30` | Option quotes are wide: a 0.0010 BTC option often has a 0.0009/0.0011 market, which is 10% either side. So options get their own wider band. It overrides `[order]`. |
 | `allow_selling_to_open` | `false` | Selling options you don't own (writing them) is blocked. Short calls have unlimited risk. Selling options you **do** own (closing) is always fine. |
 | `max_position_contracts` | `20` | Largest position in any one option contract after the order fills. |
+| `ask` | `[]` | Option rules that **ask you** instead of blocking. See below. |
 
 **`[swap]` and `[futures]`**
 
@@ -133,6 +134,35 @@ freeze everything.
 |---|---|---|
 | `derivatives_margin` | `"cross"` | Margin mode for options, perps and futures: `"cross"` (shares your whole account's margin) or `"isolated"` (each position has its own margin, so a loss can't spread). |
 | `spot_mode` | `"auto"` | `"cash"` in Spot/Futures mode, `"cross"` in multi-currency or portfolio margin. Leave it on auto unless OKX rejects spot orders. |
+
+### Ask instead of block (options)
+
+Some rules are better as a question than a wall. List them under `[option] ask`, and an option
+order that breaks one isn't refused. Instead:
+
+- **In the browser**, the confirm dialog says **Needs your OK** and shows each problem in amber with
+  a **Place anyway** box. Confirm unlocks only after you tick every box. If you don't tick, nothing is sent.
+- **From the command line**, `preview` exits with code **4** and prints the rules that need approval.
+  `place <id>` refuses (code 4) until you add `--accept rule1,rule2`.
+
+```toml
+[option]
+ask = ["price_band_pct", "daily.max_loss_usd", "daily.max_orders", "option.allow_selling_to_open"]
+```
+
+Rules that can ask: `price_band_pct`, `daily.max_orders`, `daily.max_notional_usd`, `daily.max_loss_usd`,
+`option.allow_selling_to_open`, `option.max_contracts`, `option.max_premium_usd`,
+`option.max_position_contracts`, `order.max_notional_usd`, `order.max_open_orders`.
+The master switch, the BTC-only rule, the halt (kill switch) and the cooldown always block, and perps
+always use hard limits.
+
+What the price check tells you: selling **above** the option's value (a take-profit) or buying
+**below** it just waits in the book, so the message says *"it will rest in the book until the market
+gets there"*. Selling far below or buying far above the value is the dangerous direction, so the
+message says *"you'd pay well above / sell well below what it's worth. A typo?"*
+
+Approval is checked again when you confirm, with fresh prices. If something new comes up in
+between, the dialog shows it and waits for you to tick it too.
 
 ### Example profiles
 
@@ -262,7 +292,8 @@ minus premium for short puts.
 - order value, premium, estimated fee, margin, breakeven, worst case,
 - your position before → after,
 - warnings that don't block the order (for example "your buy price is above the ask, so it fills now as a taker"),
-- every rail: **✓** passed, **✕** failed. One ✕ disables the Confirm button.
+- every rail: **✓** passed, **✕** failed. One ✕ disables the Confirm button. Rules you set to ask
+  show in amber with a **Place anyway** box instead.
 
 The Confirm button is colored by side, and the focus starts on **Cancel**, so pressing Enter never sends.
 The preview expires (60 s by default). Confirming runs **every rail again with fresh prices**. If
@@ -323,6 +354,7 @@ Run from the `btcliq` folder with its virtualenv active (`source .venv/bin/activ
 | 1 | Error (bad input, OKX rejected it, network) |
 | 2 | **Blocked by the safety rails.** Read `checks` for the rules that failed. Don't retry the same order. |
 | 3 | Not set up (no keys, or no valid `trading.toml`) |
+| 4 | **Needs the user's approval.** Rules in `[option] ask` failed; `needs_approval` lists them. Ask the user. |
 
 ```bash
 btcliq-trade status                         # keys valid? permissions? limits OK? halted?
@@ -347,7 +379,9 @@ Suggested rules for the agent's brief:
 1. Run `status` at the start of a session. Stop if the exit code isn't 0.
 2. Always `preview`, read `numbers.worst_case_usd` and `warnings`, then `place`. Never skip the preview.
 3. On exit code 2, report the failed `checks` to the user. Don't adjust the order to slip under a limit.
-4. Run `kill` if its own invalidation rules fire and it can't manage positions safely.
+4. On exit code 4, show the user the messages for the rules in `needs_approval` and ask. Only after
+   they say yes, run `place <id> --accept <those rules>`. Never pass `--accept` on its own judgment.
+5. Run `kill` if its own invalidation rules fire and it can't manage positions safely.
 
 ## 7. Test your setup safely
 

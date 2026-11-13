@@ -33,6 +33,8 @@ max_premium_usd = 500       # premium paid or received by one order
 price_band_pct = 30         # option quotes are wide, so a wider band than [order]
 allow_selling_to_open = false   # true lets you write (short) options: large or unlimited risk
 max_position_contracts = 20     # per contract, after the order fills
+ask = []                        # option rules that ask "place anyway?" instead of blocking, e.g.
+                                # ["price_band_pct", "daily.max_loss_usd", "option.allow_selling_to_open"]
 
 [swap]                      # perpetuals: BTC-USDT-SWAP (0.01 BTC/contract), BTC-USD-SWAP ($100/contract)
 max_order_usd = "off"       # a tighter per-order cap than [order], if you want one

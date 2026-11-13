@@ -15,7 +15,8 @@ browser ticket. Built for a Claude Code trading session as much as for you.
     btcliq-trade limits                                   # the limits in force, after defaults
 
 Output is JSON (add --text for readable lines). Exit codes: 0 ok, 1 error, 2 blocked by the
-safety rails, 3 not set up (no keys or no limits file).
+safety rails, 3 not set up (no keys or no limits file), 4 needs the user's approval (rules in
+[option] ask): ask them, then `place <id> --accept <rules>` only if they say yes.
 """
 
 from __future__ import annotations
@@ -30,9 +31,13 @@ import aiohttp
 
 from .chat import load_dotenv
 from .okx_private import OKXError, OKXNotConfigured
-from .trader import OrderInputError, RailsBlocked, Trader
+from .trader import NeedsApproval, OrderInputError, RailsBlocked, Trader
 
 DEFAULT_DATA = Path(__file__).resolve().parents[2] / "data"
+
+
+def _split(v: str | None) -> list[str]:
+    return [x.strip() for x in (v or "").split(",") if x.strip()]
 
 
 def _emit(obj, text: bool, lines: list[str] | None = None) -> None:
@@ -115,18 +120,19 @@ async def run(args) -> int:
                    "ordType": "market" if args.market else args.type or ("limit" if args.px else None)}
             p = await tr.preview(req, source="cli")
             ttl = int(p["expires"] - __import__("time").time())
-            lines = p["summary"] + ([f"Preview id {p['id']}: confirm within {ttl}s with  btcliq-trade place {p['id']}"]
+            acc = f" --accept {','.join(p['asks'])}" if p["asks"] else ""
+            lines = p["summary"] + ([f"Preview id {p['id']}: confirm within {ttl}s with  btcliq-trade place {p['id']}{acc}"]
                                     if not p["blocked"] else [])
             _emit(p, args.text, lines)
-            return 2 if p["blocked"] else 0
+            return 2 if p["blocked"] else 4 if p["asks"] else 0
         if c == "place":
-            r = await tr.place(args.id, source="cli")
+            r = await tr.place(args.id, source="cli", accept=_split(args.accept))
             _emit(r, args.text, r["preview"]["summary"] + [f"PLACED · ordId {r['ordId']} · clOrdId {r['clOrdId']}"])
             return 0
         if c == "amend":
             if args.px is None and args.sz is None:
                 raise OrderInputError("Give --px and/or --sz")
-            r = await tr.amend(args.instId, args.ordId, args.px, args.sz, source="cli")
+            r = await tr.amend(args.instId, args.ordId, args.px, args.sz, source="cli", accept=_split(args.accept))
             _emit(r, args.text, [f"Amended {args.ordId}"])
             return 0
         if c == "cancel":
@@ -173,11 +179,13 @@ def main(argv: list[str] | None = None) -> None:
     pv.add_argument("--reduce", action="store_true", help="only reduce or close an existing position")
     pl = sub.add_parser("place", help="send a previewed order")
     pl.add_argument("id")
+    pl.add_argument("--accept", help="comma-separated 'ask' rules you approve going past (only with the user's say-so)")
     am = sub.add_parser("amend", help="change price or size of an open order")
     am.add_argument("instId")
     am.add_argument("ordId")
     am.add_argument("--px")
     am.add_argument("--sz")
+    am.add_argument("--accept", help="comma-separated 'ask' rules you approve going past")
     cn = sub.add_parser("cancel", help="cancel one open order")
     cn.add_argument("instId")
     cn.add_argument("ordId")
@@ -193,6 +201,10 @@ def main(argv: list[str] | None = None) -> None:
         p.error("--market and --px don't go together")
     try:
         code = asyncio.run(run(args))
+    except NeedsApproval as e:
+        _emit({"ok": False, "needs_approval": e.missing, "error": str(e), "preview": e.preview}, args.text,
+              e.preview.get("summary", []) + [str(e)])
+        code = 4
     except RailsBlocked as e:
         _emit({"ok": False, "blocked": True, "error": str(e), "preview": e.preview}, args.text, e.preview.get("summary", [str(e)]))
         code = 2

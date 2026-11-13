@@ -417,3 +417,85 @@ def test_trade_routes_refuse_other_sites(tmp_path):
                              headers={"X-Btcliq-Trade": token})
             assert r.status == 400
     run(go())
+
+
+# ---------- "ask" rules: notify and let the user choose ----------
+
+ASK_TOML = """enabled = true
+[order]
+max_notional_usd = "off"
+cooldown_seconds = 0
+[daily]
+max_loss_usd = 50
+[option]
+max_contracts = "off"
+max_premium_usd = "off"
+max_position_contracts = "off"
+ask = ["price_band_pct", "daily.max_loss_usd", "daily.max_orders", "option.allow_selling_to_open"]
+"""
+
+
+def test_ask_list_is_validated(tmp_path):
+    p = tmp_path / "t.toml"
+    p.write_text("enabled = true\n[option]\nask = ['enabled']\n")
+    assert "can't ask for approval" in R.Rails(p).error
+    p.write_text("enabled = true\n[option]\nask = 'price_band_pct'\n")
+    assert "must be a list" in R.Rails(p).error
+
+
+def test_take_profit_far_above_mark_asks_instead_of_blocking(tmp_path):
+    tr, fake = make(tmp_path, ASK_TOML)
+    fake.positions["BTC-USD-261127-75000-C"] = [{"pos": "89", "posSide": "net"}]
+    p = run(tr.preview({"instId": "BTC-USD-261127-75000-C", "side": "sell", "sz": 9, "px": "0.2300"}))
+    assert not p["blocked"] and p["asks"] == ["price_band_pct"]
+    band = next(c for c in p["checks"] if c["rule"] == "price_band_pct")
+    assert band["ask"] and "rest in the book" in band["msg"]
+    assert p["summary"][-1].startswith("NEEDS YOUR APPROVAL")
+    from btcliq.trader import NeedsApproval
+    with pytest.raises(NeedsApproval, match="accept: price_band_pct"):
+        run(tr.place(p["id"]))
+    assert not fake.sent                                     # nothing sent without approval
+    r = run(tr.place(p["id"], accept=["price_band_pct"]))    # the preview survived; approve and go
+    assert r["ordId"] == "777" and fake.sent[-1][1]["px"] == "0.23"
+    assert tr.journal.since(0)[-1]["approved"] == ["price_band_pct"]
+
+
+def test_risky_direction_message(tmp_path):
+    tr, _ = make(tmp_path, ASK_TOML)
+    p = run(tr.build({"instId": "BTC-USD-261127-75000-C", "side": "buy", "sz": 1, "px": "0.0500"}))
+    band = next(c for c in p["checks"] if c["rule"] == "price_band_pct")
+    assert "pay well above" in band["msg"] and band["ask"]
+
+
+def test_ask_covers_writing_and_daily_loss_but_not_perps(tmp_path):
+    tr, fake = make(tmp_path, ASK_TOML)
+    fake.fills = [{"fillPnl": "-0.001", "ccy": "BTC", "fee": "0", "feeCcy": "BTC"}]      # -$100 today
+    p = run(tr.build({"instId": "BTC-USD-261127-75000-C", "side": "sell", "sz": 1, "px": "0.0300"}))
+    assert not p["blocked"] and set(p["asks"]) == {"option.allow_selling_to_open", "daily.max_loss_usd"}
+    p = run(tr.build({"instId": "BTC-USDT-SWAP", "side": "buy", "sz": "0.1", "px": "110000"}))
+    assert p["blocked"] and not p["asks"]                   # perps: still a hard block
+
+
+def test_halt_is_never_askable(tmp_path):
+    tr, _ = make(tmp_path, ASK_TOML)
+    tr.halt.set("x", "test")
+    p = run(tr.build({"instId": "BTC-USD-261127-75000-C", "side": "buy", "sz": 1, "px": "0.0310"}))
+    assert p["blocked"] and "halt" in failed(p)
+
+
+def test_route_reports_needs_approval(tmp_path):
+    async def go():
+        app = web.Application()
+        trade_routes.setup(app)
+        app["trader"], fake = make(tmp_path, ASK_TOML)
+        fake.positions["BTC-USD-261127-75000-C"] = [{"pos": "89", "posSide": "net"}]
+        async with TestClient(TestServer(app)) as c:
+            token = (await (await c.get("/api/trade/status")).json())["token"]
+            h = {"X-Btcliq-Trade": token}
+            p = await (await c.post("/api/trade/preview", json={"instId": "BTC-USD-261127-75000-C", "side": "sell",
+                                                               "sz": 9, "px": "0.2300"}, headers=h)).json()
+            r = await c.post("/api/trade/place", json={"id": p["id"]}, headers=h)
+            assert r.status == 409 and (await r.json())["needs_approval"] == ["price_band_pct"]
+            r = await c.post("/api/trade/place", json={"id": p["id"], "accept": ["price_band_pct"]}, headers=h)
+            assert r.status == 200
+    run(go())
