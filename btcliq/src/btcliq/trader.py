@@ -108,6 +108,27 @@ def _plain(d: Decimal) -> str:
     return s
 
 
+MARGIN_MODES = ("cross", "isolated")
+
+
+def close_margin(rows: list[dict], requested: str | None) -> tuple[str | None, list[dict]]:
+    """The margin mode a reduce-only order has to use, and the positions it can reduce.
+
+    OKX keeps cross and isolated positions in the same instrument apart. An order in the other
+    mode doesn't touch the position you meant: it closes or opens one in its own mode. So a close
+    goes out in the mode the position is held in, and only counts the contracts held there.
+    """
+    if requested:
+        return requested, [p for p in rows if p.get("mgnMode") == requested]
+    modes = sorted({p.get("mgnMode") for p in rows if _f(p.get("pos")) and p.get("mgnMode") in MARGIN_MODES})
+    if len(modes) > 1:
+        raise OrderInputError("You hold this in both cross and isolated margin, which OKX closes separately. "
+                              "Close each part from its own row (or pass mgnMode)")
+    if modes:
+        return modes[0], [p for p in rows if p.get("mgnMode") == modes[0]]
+    return None, rows
+
+
 def contract_math(meta: dict) -> dict:
     """What one unit of size is worth, from OKX's instrument spec."""
     t = meta["instType"]
@@ -433,8 +454,11 @@ class Trader:
             raise OrderInputError(f"ordType must be one of {', '.join(ORD_TYPES)}")
         sz = _dec(req.get("sz"), "Size")
         px = None if ord_type == "market" else _dec(req.get("px"), "Price")
+        mgn = str(req.get("mgnMode") or "").strip().lower() or None
+        if mgn and mgn not in MARGIN_MODES:
+            raise OrderInputError("mgnMode must be cross or isolated")
         return {"instId": inst_id, "side": side, "ordType": ord_type, "sz": sz, "px": px,
-                "reduce": bool(req.get("reduce"))}
+                "reduce": bool(req.get("reduce")), "mgnMode": mgn}
 
     async def build(self, req: dict) -> dict:
         """Price and check an order without storing or sending it."""
@@ -470,6 +494,10 @@ class Trader:
             td_mode = ("cross" if acct_lv in ("3", "4") else "cash") if spot_mode == "auto" else spot_mode
         else:
             td_mode = mgn
+        held = None   # a close only looks at the positions in the margin mode it goes out in
+        if t != "SPOT" and r["reduce"]:
+            held_mode, held = close_margin(await self._positions(inst_id), r["mgnMode"])
+            td_mode = held_mode or td_mode
 
         index = q["index"] or (q["mark"] if t == "SPOT" else None)
         ref = q["mark"] if q["mark"] else q["last"]
@@ -505,7 +533,7 @@ class Trader:
             if r["reduce"] and side == "buy":
                 raise OrderInputError("Reduce-only doesn't apply to spot buys")
         else:
-            rows = await self._positions(inst_id)
+            rows = held if held is not None else await self._positions(inst_id)
             long_q = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") == "long")
             short_q = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") == "short")
             net = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") in ("net", "", None)) + long_q - short_q
@@ -543,7 +571,7 @@ class Trader:
         lever = None
         if t in ("SWAP", "FUTURES") and not closing:
             try:
-                lever = await self._leverage(inst_id, mgn)
+                lever = await self._leverage(inst_id, td_mode)
             except OKXError as e:
                 log.warning("Couldn't read leverage for %s: %s", inst_id, e)
 
@@ -785,7 +813,7 @@ class Trader:
         return {k: p[k] for k in ("numbers", "checks", "blocked", "asks", "warnings", "position", "market",
                                   "instrument", "okx_order", "account")}
 
-    async def sizing(self, inst_id: str, side: str, px=None, reduce: bool = False) -> dict:
+    async def sizing(self, inst_id: str, side: str, px=None, reduce: bool = False, mgn_mode: str | None = None) -> dict:
         """What the ticket's size slider spans: the most OKX lets you trade, and where the safety rails stop you."""
         side = str(side or "").lower()
         if side not in ("buy", "sell"):
@@ -809,6 +837,11 @@ class Trader:
         net = long_q = short_q = 0.0
         if t != "SPOT":
             rows = await self._positions(inst_id)
+            if reduce:
+                if mgn_mode and mgn_mode not in MARGIN_MODES:
+                    raise OrderInputError("mgnMode must be cross or isolated")
+                held_mode, rows = close_margin(rows, mgn_mode)
+                td_mode = held_mode or td_mode
             long_q = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") == "long")
             short_q = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") == "short")
             net = sum(_f(p.get("pos")) or 0 for p in rows if p.get("posSide") in ("net", "", None)) + long_q - short_q

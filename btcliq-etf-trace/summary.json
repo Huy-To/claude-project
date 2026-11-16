@@ -1,0 +1,35 @@
+{
+ "IBIT": {
+  "addresses": 2956,
+  "proven": 1389,
+  "pattern_only": 1567,
+  "btc_proven": 305892.4,
+  "btc_listed": 775692.5,
+  "left_out_unassigned_slots": 272,
+  "btc_left_out": 81599.8,
+  "moved_to_BTC_2026-11-15": 6
+ },
+ "FBTC": {
+  "addresses": 353,
+  "intake": 5,
+  "cold": 348,
+  "btc_listed": 120839.3,
+  "cluster_members_total": 20955
+ },
+ "ARKB": {
+  "addresses": 349,
+  "holding": 54,
+  "btc_listed": 12949.4
+ },
+ "BTC": {
+  "addresses": 204,
+  "holding": 105,
+  "btc_listed": 46864.8,
+  "fund_btc_est": 62836,
+  "share_pct": 75,
+  "redeems_to": [
+   "3B1g33p9mWS1YJB57G5ewuSXkV6vQ5cXKz",
+   "3Dwfb4U5oXgKQVrxE6WH6GXgXqf4PUYaWW"
+  ]
+ }
+}

@@ -117,6 +117,7 @@ async def run(args) -> int:
             return 0
         if c == "preview":
             req = {"instId": args.instId, "side": args.side, "sz": args.sz, "px": args.px, "reduce": args.reduce,
+                   "mgnMode": args.margin,
                    "ordType": "market" if args.market else args.type or ("limit" if args.px else None)}
             p = await tr.preview(req, source="cli")
             ttl = int(p["expires"] - __import__("time").time())
@@ -177,6 +178,8 @@ def main(argv: list[str] | None = None) -> None:
     pv.add_argument("--type", choices=["limit", "post_only", "ioc", "fok"], help="order type (default limit)")
     pv.add_argument("--market", action="store_true", help="market order (not for options)")
     pv.add_argument("--reduce", action="store_true", help="only reduce or close an existing position")
+    pv.add_argument("--margin", choices=["cross", "isolated"],
+                    help="with --reduce: which part to close when you hold it in both cross and isolated margin")
     pl = sub.add_parser("place", help="send a previewed order")
     pl.add_argument("id")
     pl.add_argument("--accept", help="comma-separated 'ask' rules you approve going past (only with the user's say-so)")

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "btcliq": {
+      "command": "btcliq/.venv/bin/python",
+      "args": ["-m", "btcliq.desk.bridge"]
+    }
+  }
+}

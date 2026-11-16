@@ -287,12 +287,14 @@ class PowerLaw:
         }
 
     # ---------- chat ----------
-    def context(self) -> list[str]:
+    def context(self, rules: bool = True) -> list[str]:
+        """The live state for the chat. The rules are fixed text, so the chat keeps them in its
+        standing instructions (rules=False here) instead of resending them with every question."""
         st = self.state()
         if not st.get("ready"):
             return ["", "### Bitcoin power law", "not loaded yet"]
         inv = st["invalidation"]
-        out = ["", "### Bitcoin power law (Santostasi; SP26 primary; live)", RULES, "",
+        out = ["", "### Bitcoin power law (Santostasi; SP26 primary; live)", *([RULES, ""] if rules else []),
                f"State: price ${st['price']:,.0f} ({st['price_source']}) = {st['ratio']:.3f}x SP26 trend "
                f"(${st['trend']:,.0f}), residual {st['resid_dex']:+.3f} dex, zone {st['zone']}.",
                f"Floor (0.42x) ${st['floor']:,.0f}, cushion {st['floor_cushion_pct']:.1f}%; alt floors: REFIT ${st['floor_refit']:,.0f}, "

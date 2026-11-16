@@ -1,0 +1,14 @@
+filters:
+  and:
+    - categories.contains(link("Decisions"))
+    - '!file.inFolder("Templates")'
+views:
+  - type: table
+    name: Decisions
+    order:
+      - file.name
+      - summary
+      - created
+    sort:
+      - property: created
+        direction: DESC

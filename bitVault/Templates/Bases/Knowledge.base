@@ -1,0 +1,15 @@
+filters:
+  and:
+    - categories.contains(link("Knowledge"))
+    - '!file.inFolder("Templates")'
+views:
+  - type: table
+    name: What the chat can read
+    order:
+      - file.name
+      - summary
+      - source
+      - file.mtime
+    sort:
+      - property: file.name
+        direction: ASC

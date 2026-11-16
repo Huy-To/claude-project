@@ -6,7 +6,8 @@ Two families:
 
 Data comes from five public OKX endpoints (instruments, tickers, opt-summary for IV and
 greeks, mark price, open interest), merged per contract and cached for a few seconds.
-Polling only happens while a browser is looking at options.
+The chain is read whenever a browser is looking at options, and once a minute by the
+recorder loop in app.py. Every fresh chain read is handed to the recorder (options_store.py).
 """
 
 from __future__ import annotations
@@ -79,6 +80,9 @@ class OptionsFeed:
         self._chain: dict[str, tuple[float, dict]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self.last_request = 0.0
+        self.store = None                       # OptionStore; set by the app when recording is on
+        self._recording: set[asyncio.Task] = set()
+        self._record_warned = 0.0
 
     async def _okx(self, path: str, **params) -> list:
         async with self.s.get(OKX + path, params=params) as r:
@@ -129,6 +133,7 @@ class OptionsFeed:
                     "family": family,
                     "expiry": n.split("-")[-3],
                     "exp_ms": int(i["expTime"]),
+                    "list_ms": int(i["listTime"]) if i.get("listTime") else None,
                     "strike": float(i["stk"]),
                     "type": i["optType"],
                     "unit": "BTC" if coin else "USD",
@@ -154,7 +159,33 @@ class OptionsFeed:
             snap = {"family": family, "label": FAMILIES[family], "index": idx, "ts": int(time.time() * 1000),
                     "expiries": expiries, "contracts": contracts}
             self._chain[family] = (time.time(), snap)
+            self._record(snap)
             return snap
+
+    # ---------- recorder ----------
+    def _record(self, snap: dict) -> None:
+        """Hand a fresh snapshot to the recorder without making the caller wait for the disk."""
+        if self.store is None:
+            return
+        task = asyncio.create_task(self._record_bg(self.store, snap))
+        self._recording.add(task)
+        task.add_done_callback(self._recording.discard)
+
+    async def _record_bg(self, store, snap: dict) -> None:
+        try:
+            await asyncio.to_thread(store.record, snap)
+        except Exception as e:   # a full disk or a locked file must never break the chain
+            if time.time() - self._record_warned > 300:
+                self._record_warned = time.time()
+                log.warning("options recorder: couldn't save the %s snapshot: %s", snap.get("family"), e)
+
+    async def stop(self) -> None:
+        """Stop recording: let snapshots that are being written finish, then close the file."""
+        store, self.store = self.store, None
+        if self._recording:
+            await asyncio.gather(*self._recording, return_exceptions=True)
+        if store is not None:
+            await asyncio.to_thread(store.close)
 
     # ---------- single contract ----------
     async def find(self, query: str, family_hint: str | None = None) -> tuple[dict | None, list[str], dict]:
@@ -195,13 +226,17 @@ class OptionsFeed:
         return None, [c["name"] for c in cands[:12]], parsed
 
     async def detail(self, name: str) -> dict:
-        """Order book and recent candles for one contract (fetched live)."""
-        book, candles = await asyncio.gather(
+        """Order book, recent candles and the last single trades for one contract (fetched live)."""
+        book, candles, trades = await asyncio.gather(
             self._okx("/api/v5/market/books", instId=name, sz=10),
             self._okx("/api/v5/market/candles", instId=name, bar="1H", limit=168),
+            self._okx("/api/v5/market/trades", instId=name, limit=50),
             return_exceptions=True,
         )
         out: dict = {"book": None, "candles": []}
+        if not isinstance(trades, Exception):   # newest first; left out if OKX didn't answer
+            out["trades"] = [{"time": int(t["ts"]), "px": float(t["px"]), "sz": float(t["sz"]), "side": t["side"]}
+                             for t in trades[:50]]
         if not isinstance(book, Exception) and book:
             b = book[0]
             out["book"] = {"bids": [[float(p), float(s)] for p, s, *_ in b["bids"]],

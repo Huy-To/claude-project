@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import bisect
 import json
 import logging
 import mimetypes
@@ -25,10 +26,16 @@ from aiohttp import web
 
 from .book import VENUES as BOOK_VENUES, BookFeed
 from . import trade_routes
-from .chat import DEFAULT_MODEL, Chat, load_dotenv
+from .chat import load_dotenv
+from .desk import routes as desk_routes
+from .desk.service import DEFAULT_MODEL, Desk
+from .etfs import EtfFlows
 from .exchanges import TIMEFRAMES, Exchanges
 from .macro import MacroCalendar
 from .options import FAMILIES, OptionsFeed
+from .options_history import OptionHistory
+from .options_store import OptionStore
+from .polymarket import Polymarket
 from .powerlaw import PowerLaw
 from .stables import Stablecoins
 from .telegram import TelegramMonitor
@@ -41,6 +48,8 @@ MAX_DAYS = 45            # OKX hourly open interest history
 FINE_DAYS = 3            # OKX 5-minute open interest history (~3.5 days available)
 CHART_BARS = 1000        # candles sent per timeframe
 CACHE_SECONDS = 120
+OPTIONS_RECORD_SECONDS = 60   # both option families are recorded this often, whatever view is open
+OPTIONS_THIN_SECONDS = 86_400 # recorded samples older than a day are thinned to one a minute
 
 
 class State:
@@ -61,9 +70,12 @@ class State:
         self.book: BookFeed | None = None
         self.news: TelegramMonitor | None = None
         self.options: OptionsFeed | None = None
+        self.option_history: OptionHistory | None = None
         self.powerlaw: PowerLaw | None = None
         self.stables: Stablecoins | None = None
+        self.etfs: EtfFlows | None = None
         self.calendar: MacroCalendar | None = None
+        self.polymarket: Polymarket | None = None
 
     @property
     def live_oi(self) -> float:
@@ -291,6 +303,33 @@ async def prewarm_loop(st: State, ex: Exchanges) -> None:
         await asyncio.sleep(CACHE_SECONDS - 5)
 
 
+async def options_record_loop(st: State, ex: Exchanges) -> None:
+    """Read both option chains once a minute so the recorder has them, whatever view is open.
+    A chain the Options tab read in the last few seconds is reused, not fetched again."""
+    await asyncio.sleep(5)
+    while True:
+        started = time.time()
+        for family in FAMILIES:
+            try:
+                await st.options.chain(family)
+            except Exception as e:
+                log.warning("options recorder: couldn't read the %s chain: %s", family, e)
+        await asyncio.sleep(max(5.0, OPTIONS_RECORD_SECONDS - (time.time() - started)))
+
+
+async def options_thin_loop(st: State, ex: Exchanges) -> None:
+    """Once a day, keep one recorded sample a minute for everything older than a day."""
+    await asyncio.sleep(120)
+    while True:
+        try:
+            removed = await asyncio.to_thread(st.options.store.thin)
+            if removed:
+                log.info("options recorder: thinned %d rows older than a day to one a minute", removed)
+        except Exception as e:
+            log.warning("options recorder: thinning failed: %s", e)
+        await asyncio.sleep(OPTIONS_THIN_SECONDS)
+
+
 BOOK_STEPS = (0.5, 1, 5, 10, 25, 50, 100, 250)
 
 
@@ -344,6 +383,20 @@ async def options_chain(req):
     except Exception as e:
         log.warning("options chain failed: %s", e)
         return web.json_response({"error": f"Couldn't load options from OKX: {e}"}, status=502)
+
+
+async def options_history(req):
+    """Mark, bid, ask and IV history of one contract. An unknown contract gets 200 with no bars:
+    the page reads a 404 as "this server has no history" and stops asking."""
+    st: State = req.app["state"]
+    inst_id = req.query.get("instId", "").strip()
+    if not inst_id:
+        raise web.HTTPBadRequest(text="instId is required")
+    try:
+        return web.json_response(await st.option_history.history(inst_id, req.query.get("range", "1D")))
+    except Exception as e:
+        log.warning("options history failed: %s", e)
+        return web.json_response({"error": f"Couldn't load option history from OKX: {e}"}, status=502)
 
 
 async def options_contract(req):
@@ -416,9 +469,46 @@ async def stables_coin_handler(req):
         return web.json_response({"error": f"Couldn't load that coin's history: {e}"}, status=502)
 
 
+async def etfs_handler(req):
+    st: State = req.app["state"]
+    return web.json_response(st.etfs.snapshot() if st.etfs else {"ready": False, "off": st.args.etf_flows == "off"})
+
+
+async def etfs_wallets_handler(req):
+    st: State = req.app["state"]
+    ticker = req.query.get("ticker", "").upper()
+    if not st.etfs or ticker not in st.etfs.wallets:
+        raise web.HTTPNotFound(text="no wallet addresses are tracked for that fund")
+    return web.json_response(st.etfs.wallet_list(ticker))
+
+
+def btc_price_at(st: State):
+    """BTC price at a time, to value an ETF flow: the live price for the last few hours, else that day's close."""
+    def at(ms: int) -> float | None:
+        if st.price and time.time() * 1000 - ms < 6 * 3_600_000:
+            return st.price
+        rows = st.powerlaw.rows if st.powerlaw else []
+        if rows:
+            day = datetime.fromtimestamp(ms / 1000, timezone.utc).date()
+            i = bisect.bisect_right(rows, (day, float("inf"))) - 1
+            if i >= 0 and (day - rows[i][0]).days <= 3:
+                return rows[i][1]
+        return st.price or None
+    return at
+
+
 async def calendar_handler(req):
     st: State = req.app["state"]
     return web.json_response(st.calendar.snapshot() if st.calendar else {"ready": False})
+
+
+async def polymarket_handler(req):
+    """Polymarket BTC odds: /api/polymarket/ladders (hit, above, range) or /api/polymarket/updown."""
+    st: State = req.app["state"]
+    if not st.polymarket:
+        return web.json_response({"ready": False, "error": "Starting up"})
+    part = req.match_info["part"]
+    return web.json_response(await (st.polymarket.ladders() if part == "ladders" else st.polymarket.updown()))
 
 
 async def powerlaw_handler(req):
@@ -426,25 +516,10 @@ async def powerlaw_handler(req):
     return web.json_response(st.powerlaw.state() if st.powerlaw else {"ready": False})
 
 
-async def chat_status(req):
-    chat: Chat = req.app["chat"]
-    return web.json_response({"enabled": chat.enabled, "model": chat.model, "backend": chat.backend,
-                              "label": chat.label, "disabled_by_flag": chat.requested == "off"})
-
-
-async def chat_handler(req):
-    st: State = req.app["state"]
-    chat: Chat = req.app["chat"]
-    if not chat.enabled:
-        raise web.HTTPServiceUnavailable(text="Chat is off: install Claude Code or add ANTHROPIC_API_KEY to .env, then restart btcliq.")
-    body = await req.json()
-    resp = web.StreamResponse(headers={"Content-Type": "text/plain; charset=utf-8",
-                                       "Cache-Control": "no-store"})
-    await resp.prepare(req)
-    async for text in chat.stream(st, body.get("messages", []), body.get("tf"), body.get("option")):
-        await resp.write(text.encode())
-    await resp.write_eof()
-    return resp
+async def desk_asset(req):
+    """The Claude and Notes views' scripts and styles, never cached, so an update shows on reload."""
+    name = req.match_info["name"]
+    return web.FileResponse(STATIC / name, headers={"Cache-Control": "no-store"})
 
 
 async def ws_handler(req):
@@ -471,7 +546,13 @@ async def start_background(app):
     app["ex"] = ex = Exchanges(session)
     app["book"] = st.book = BookFeed(session)
     st.options = OptionsFeed(session)
+    if st.args.options_recorder == "on":
+        st.options.store = OptionStore(Path(st.args.data_dir) / "options")
+    st.option_history = OptionHistory(st.options, st.options.store)
     trade_routes.start(app, session, Path(st.args.data_dir))
+    desk: Desk = app["desk"]
+    desk._candles_fn = lambda tf: get_candles(st, ex, tf)
+    desk.start(session, ex, app["trader"])
     st.powerlaw = PowerLaw(session, Path(st.args.data_dir))
 
     async def on_powerlaw(state):
@@ -484,7 +565,15 @@ async def start_background(app):
         await st.broadcast({"type": "stables", "data": snap})
 
     st.stables.on_update = on_stables
+    if st.args.etf_flows == "on":
+        st.etfs = EtfFlows(session, Path(st.args.data_dir), btc_price_at(st))
+
+        async def on_etfs(snap):
+            await st.broadcast({"type": "etfs", "data": snap})
+
+        st.etfs.on_update = on_etfs
     st.calendar = MacroCalendar(session)
+    st.polymarket = Polymarket(session)
 
     async def on_calendar(snap):
         await st.broadcast({"type": "calendar", "data": snap})
@@ -501,10 +590,16 @@ async def start_background(app):
 
     st.news.on_new, st.news.on_status = on_news, on_status
     await bootstrap(st, ex)
-    app["tasks"] = [asyncio.create_task(f(st, ex)) for f in (tick_loop, oi_loop, liq_loop, prewarm_loop)]
+    loops = [tick_loop, oi_loop, liq_loop, prewarm_loop]
+    if st.options.store is not None:
+        loops += [options_record_loop, options_thin_loop]
+        log.info("Recording option quotes to %s", st.options.store.root)
+    app["tasks"] = [asyncio.create_task(f(st, ex)) for f in loops]
     st.news.start()
     st.powerlaw.start(lambda: st.price or None)
     st.stables.start(lambda: st.price or None)
+    if st.etfs:
+        st.etfs.start()
     st.calendar.start()
     if st.news.channels:
         log.info("Watching Telegram: %s", ", ".join(c["name"] for c in st.news.channels.values()))
@@ -519,14 +614,19 @@ async def stop_background(app):
         t.cancel()
     if "book" in app:
         await app["book"].stop()
+    if app["state"].options:
+        await app["state"].options.stop()
     if app["state"].news:
         await app["state"].news.stop()
     if app["state"].powerlaw:
         await app["state"].powerlaw.stop()
     if app["state"].stables:
         await app["state"].stables.stop()
+    if app["state"].etfs:
+        await app["state"].etfs.stop()
     if app["state"].calendar:
         await app["state"].calendar.stop()
+    await app["desk"].stop()
     await app["session"].close()
 
 
@@ -544,10 +644,22 @@ def main(argv: list[str] | None = None) -> None:
                    "(they're saved; you can also add channels in the browser)")
     p.add_argument("--telegram-seconds", type=int, default=30, help="how often to check each channel")
     p.add_argument("--data-dir", default=str(DEFAULT_DATA), help="where news history and settings are saved")
+    p.add_argument("--options-recorder", choices=["on", "off"], default="on",
+                   help="save OKX option quotes (bid, ask, mark, IV) to <data-dir>/options every minute (default on)")
+    p.add_argument("--etf-flows", choices=["on", "off"], default="on",
+                   help="watch spot Bitcoin ETF wallets on-chain and read the published daily flows (default on)")
     p.add_argument("--chat", choices=["auto", "claude-code", "api", "off"], default="auto",
                    help="how the chat reaches Claude: your local Claude Code login, an API key, "
                         "or auto (Claude Code if installed, else API key)")
-    p.add_argument("--model", default=DEFAULT_MODEL, help=f"Claude model for the chat (default {DEFAULT_MODEL})")
+    p.add_argument("--model", default=DEFAULT_MODEL,
+                   help=f"Claude model the chat starts on (default {DEFAULT_MODEL}); the Claude view has a picker")
+    p.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"], default="medium",
+                   help="how hard Claude thinks per answer: higher is slower and uses more of your plan (default medium)")
+    p.add_argument("--vault", default=None,
+                   help="Obsidian vault with the chat's knowledge notes (default: BTCLIQ_VAULT in .env, "
+                        "else a bitVault folder next to this project)")
+    p.add_argument("--garch-dir", default=None,
+                   help="folder of the garch-method plugin (default: ../garch-method-fixed)")
     args = p.parse_args(argv)
     if not 0 < args.days <= MAX_DAYS:
         p.error(f"--days must be between 0 and {MAX_DAYS} (OKX's hourly open-interest history)")
@@ -557,16 +669,23 @@ def main(argv: list[str] | None = None) -> None:
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
     load_dotenv()
-    app = web.Application()
+    app = web.Application(client_max_size=16 * 1024 * 1024)   # room for an image pasted into a note
     app["state"] = State(args)
-    app["chat"] = Chat(args.model, args.chat)
-    if app["chat"].enabled:
-        log.info("Chat uses %s (%s)", app["chat"].label, args.model)
+    desk = app["desk"] = Desk(app["state"], args, Path(args.data_dir), Path(__file__).resolve().parents[2])
+    if desk.enabled:
+        log.info("Chat uses %s (%s)%s", desk.label, desk.model,
+                 ", with the API key as a fallback you choose" if desk.cli and desk.api else "")
     elif args.chat == "off":
         log.info("Chat is off (--chat off)")
     else:
         log.info("Chat is off: install Claude Code or add ANTHROPIC_API_KEY to .env")
+    v = desk.vault.status()
+    if v["ok"]:
+        log.info("Chat knowledge: %d notes and %d pinned notes in %s", v["knowledge_notes"], v["pinned"], v["path"])
+    else:
+        log.info("Chat knowledge: no vault found (pass --vault, or set BTCLIQ_VAULT in .env)")
     app.router.add_get("/", index)
+    app.router.add_get("/{name:(?:desk|notes)\\.(?:js|css)}", desk_asset)
     mimetypes.add_type("font/woff2", ".woff2")
     app.router.add_static("/fonts/", STATIC / "fonts", append_version=False)
     app.router.add_get("/api/candles", candles_handler)
@@ -574,15 +693,18 @@ def main(argv: list[str] | None = None) -> None:
     app.router.add_route("*", "/api/telegram", telegram_handler)
     app.router.add_get("/api/options/chain", options_chain)
     app.router.add_get("/api/options/contract", options_contract)
+    app.router.add_get("/api/options/history", options_history)
     app.router.add_get("/api/powerlaw", powerlaw_handler)
     app.router.add_get("/api/stables", stables_handler)
     app.router.add_route("*", "/api/drawings", drawings_handler)
     app.router.add_get("/api/stables/coin", stables_coin_handler)
+    app.router.add_get("/api/etfs", etfs_handler)
+    app.router.add_get("/api/etfs/wallets", etfs_wallets_handler)
     app.router.add_get("/api/calendar", calendar_handler)
-    app.router.add_get("/api/chat", chat_status)
-    app.router.add_post("/api/chat", chat_handler)
+    app.router.add_get("/api/polymarket/{part:ladders|updown}", polymarket_handler)
     app.router.add_get("/ws", ws_handler)
     trade_routes.setup(app)
+    desk_routes.setup(app)
     app.on_startup.append(start_background)
     app.on_cleanup.append(stop_background)
     web.run_app(app, host="127.0.0.1", port=args.port, print=None)

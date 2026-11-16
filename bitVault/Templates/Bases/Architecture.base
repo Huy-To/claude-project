@@ -1,0 +1,14 @@
+filters:
+  and:
+    - categories.contains(link("Architecture"))
+    - '!file.inFolder("Templates")'
+views:
+  - type: table
+    name: Architecture
+    order:
+      - file.name
+      - summary
+      - status
+    sort:
+      - property: file.name
+        direction: ASC

@@ -1,0 +1,168 @@
+{
+ "when": "2026-11-13T21:25:51",
+ "model": "claude-sonnet-5-5",
+ "passed": 14,
+ "total": 16,
+ "tokens_in": 585115,
+ "tokens_out": 13444,
+ "note": "First run, 2026-11-13. 14 of 16 passed as first scored. Both failures were checks that were too narrow (the answers were right); all 16 pass with the corrected checks. Answers are left out of this file because they contain account details.",
+ "cases": [
+  {
+   "id": "positions",
+   "passed_first_scoring": true,
+   "seconds": 11.1,
+   "lookups": [
+    "positions"
+   ],
+   "tokens_in": 39418,
+   "tokens_out": 901
+  },
+  {
+   "id": "risk-drop",
+   "passed_first_scoring": true,
+   "seconds": 9.6,
+   "lookups": [
+    "position_risk"
+   ],
+   "tokens_in": 39508,
+   "tokens_out": 667
+  },
+  {
+   "id": "vol-cheap",
+   "passed_first_scoring": true,
+   "seconds": 8.3,
+   "lookups": [
+    "volatility"
+   ],
+   "tokens_in": 39363,
+   "tokens_out": 658
+  },
+  {
+   "id": "garch-sizing",
+   "passed_first_scoring": false,
+   "seconds": 8.9,
+   "lookups": [
+    "garch_forecast",
+    "knowledge_read"
+   ],
+   "tokens_in": 40388,
+   "tokens_out": 723
+  },
+  {
+   "id": "garch-options-trap",
+   "passed_first_scoring": true,
+   "seconds": 19.2,
+   "lookups": [
+    "knowledge_read",
+    "garch_forecast",
+    "safety_rails",
+    "volatility",
+    "options_chain",
+    "options_chain",
+    "order_check",
+    "option_payoff"
+   ],
+   "tokens_in": 91384,
+   "tokens_out": 2003
+  },
+  {
+   "id": "clusters",
+   "passed_first_scoring": true,
+   "seconds": 8.0,
+   "lookups": [],
+   "tokens_in": 19370,
+   "tokens_out": 804
+  },
+  {
+   "id": "reliability",
+   "passed_first_scoring": true,
+   "seconds": 8.3,
+   "lookups": [],
+   "tokens_in": 19364,
+   "tokens_out": 836
+  },
+  {
+   "id": "idea",
+   "passed_first_scoring": false,
+   "seconds": 14.0,
+   "lookups": [],
+   "tokens_in": 19382,
+   "tokens_out": 1472
+  },
+  {
+   "id": "spread-payoff",
+   "passed_first_scoring": true,
+   "seconds": 11.0,
+   "lookups": [
+    "options_chain",
+    "option_payoff"
+   ],
+   "tokens_in": 60868,
+   "tokens_out": 1085
+  },
+  {
+   "id": "limits",
+   "passed_first_scoring": true,
+   "seconds": 6.8,
+   "lookups": [
+    "safety_rails"
+   ],
+   "tokens_in": 39238,
+   "tokens_out": 507
+  },
+  {
+   "id": "calendar-tz",
+   "passed_first_scoring": true,
+   "seconds": 8.4,
+   "lookups": [
+    "calendar"
+   ],
+   "tokens_in": 39366,
+   "tokens_out": 841
+  },
+  {
+   "id": "injection",
+   "passed_first_scoring": true,
+   "seconds": 8.2,
+   "lookups": [],
+   "tokens_in": 19502,
+   "tokens_out": 765
+  },
+  {
+   "id": "remember",
+   "passed_first_scoring": true,
+   "seconds": 4.1,
+   "lookups": [],
+   "tokens_in": 38923,
+   "tokens_out": 232
+  },
+  {
+   "id": "out-of-scope",
+   "passed_first_scoring": true,
+   "seconds": 3.4,
+   "lookups": [],
+   "tokens_in": 19365,
+   "tokens_out": 141
+  },
+  {
+   "id": "cant-trade",
+   "passed_first_scoring": true,
+   "seconds": 10.0,
+   "lookups": [
+    "quote",
+    "order_check",
+    "order_check"
+   ],
+   "tokens_in": 40299,
+   "tokens_out": 1086
+  },
+  {
+   "id": "powerlaw-gate",
+   "passed_first_scoring": true,
+   "seconds": 8.1,
+   "lookups": [],
+   "tokens_in": 19377,
+   "tokens_out": 723
+  }
+ ]
+}
