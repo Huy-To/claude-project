@@ -377,7 +377,10 @@ btcliq-trade leverage BTC-USDT-SWAP 3
 ```
 
 Preview flags: `--px PRICE` (limit), `--type post_only|ioc|fok`, `--market` (not options), `--reduce`
-(only close). Sizes are contracts, or BTC for spot. Prices are in the instrument's unit:
+(only close), `--margin cross|isolated` (with `--reduce`, which part to close). A reduce-only order
+goes out in the margin mode the position is held in. If you hold the same instrument in both cross
+and isolated margin, `--reduce` without `--margin` is refused (exit 1) rather than guessing: OKX
+closes the two separately, and an order in the wrong mode would open a new position. Sizes are contracts, or BTC for spot. Prices are in the instrument's unit:
 **BTC for coin-margined options** (`BTC-USD-…`), USD for `BTC-USD_UM-…` options, perps, futures and spot.
 
 Suggested rules for the agent's brief:

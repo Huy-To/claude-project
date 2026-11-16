@@ -5,9 +5,11 @@ OKX is faked in memory (see test_trading.FakeOKX): nothing here talks to the rea
 
 import json
 
+import pytest
+
 from test_trading import ROOT, FakeOKX, make, run
 
-from btcliq.trader import match_rate, norm_fill, norm_funding, norm_order, unit_math
+from btcliq.trader import OrderInputError, match_rate, norm_fill, norm_funding, norm_order, unit_math
 
 NOW_MS = 1_763_000_000_000
 
@@ -81,6 +83,17 @@ def test_sizing_reduce_only_is_capped_by_the_position(tmp_path):
     s = run(tr.sizing("BTC-USDT-SWAP", "sell", "100000", reduce=True))
     assert s["max"] == 3.0 and s["closing"]
     assert not any(path == "/api/v5/account/max-size" for path, _ in fake.calls)
+
+
+def test_sizing_reduce_only_counts_one_margin_mode(tmp_path):
+    fake = HistOKX()
+    fake.positions["BTC-USD-261127-75000-C"] = [{"posSide": "net", "pos": "145", "mgnMode": "cross"},
+                                                 {"posSide": "net", "pos": "155", "mgnMode": "isolated"}]
+    tr, _ = make(tmp_path, fake=fake)
+    s = run(tr.sizing("BTC-USD-261127-75000-C", "sell", "0.03", reduce=True, mgn_mode="isolated"))
+    assert s["max"] == 155.0 and s["td_mode"] == "isolated" and s["closing"]
+    with pytest.raises(OrderInputError, match="both cross and isolated"):
+        run(tr.sizing("BTC-USD-261127-75000-C", "sell", "0.03", reduce=True))
 
 
 def test_sizing_spot_sell_uses_the_btc_balance(tmp_path):

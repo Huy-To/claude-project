@@ -225,6 +225,34 @@ def test_selling_options_you_own_is_closing(tmp_path):
     assert not p["position"]["closing"] and "option.allow_selling_to_open" in failed(p)
 
 
+def test_close_uses_the_margin_mode_the_position_is_held_in(tmp_path):
+    """OKX keeps cross and isolated positions apart; a close in the wrong mode would open a new position."""
+    tr, fake = make(tmp_path)   # trading config says derivatives_margin = cross
+    opt = "BTC-USD-261127-75000-C"
+    sell = lambda sz, **kw: run(tr.build({"instId": opt, "side": "sell", "sz": sz, "px": "0.0300", "reduce": True, **kw}))
+    # Held only in isolated: a close goes out isolated even though the config says cross.
+    fake.positions[opt] = [{"pos": "4", "posSide": "net", "mgnMode": "isolated"}]
+    p = sell(4)
+    assert p["okx_order"]["tdMode"] == "isolated" and p["position"]["closing"]
+    # Split across both modes: each part closes in its own mode, and only counts what it holds.
+    fake.positions[opt] = [{"pos": "145", "posSide": "net", "mgnMode": "cross"},
+                           {"pos": "155", "posSide": "net", "mgnMode": "isolated"}]
+    with pytest.raises(OrderInputError, match="both cross and isolated"):
+        sell(155)
+    p = sell(155, mgnMode="isolated")
+    assert p["okx_order"]["tdMode"] == "isolated" and p["position"]["contracts"] == 155
+    assert p["position"]["closing"]
+    p = sell(145, mgnMode="cross")
+    assert p["okx_order"]["tdMode"] == "cross" and p["position"]["contracts"] == 145
+    with pytest.raises(OrderInputError, match="Reduce-only"):
+        sell(150, mgnMode="cross")                      # more than the cross part holds
+    with pytest.raises(OrderInputError, match="cross or isolated"):
+        sell(1, mgnMode="portfolio")
+    # Opening orders still follow the config.
+    p = run(tr.build({"instId": opt, "side": "buy", "sz": 1, "px": "0.0300"}))
+    assert p["okx_order"]["tdMode"] == "cross"
+
+
 def test_fat_finger_price_band(tmp_path):
     tr, _ = make(tmp_path)
     p = run(tr.build({"instId": "BTC-USDT-SWAP", "side": "buy", "sz": "0.1", "px": "110000"}))

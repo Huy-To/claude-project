@@ -1,0 +1,11 @@
+filters:
+  and:
+    - categories.contains(link("Memory"))
+    - '!file.inFolder("Templates")'
+views:
+  - type: table
+    name: Memory
+    order:
+      - file.name
+      - summary
+      - file.mtime

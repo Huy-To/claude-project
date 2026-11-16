@@ -109,14 +109,15 @@ async def check(req):
     """Read-only: the preview's numbers and rail checks without storing a preview (the ticket's live summary)."""
     q = req.query
     body = {"instId": q.get("instId", ""), "side": q.get("side", ""), "ordType": q.get("ordType") or None,
-            "sz": q.get("sz", ""), "px": q.get("px") or None, "reduce": _flag(q.get("reduce"))}
+            "sz": q.get("sz", ""), "px": q.get("px") or None, "reduce": _flag(q.get("reduce")),
+            "mgnMode": q.get("mgnMode") or None}
     return web.json_response(await _trader(req).check(body))
 
 
 async def sizing(req):
     q = req.query
     return web.json_response(await _trader(req).sizing(q.get("instId", ""), q.get("side", ""), q.get("px") or None,
-                                                       _flag(q.get("reduce"))))
+                                                       _flag(q.get("reduce")), q.get("mgnMode") or None))
 
 
 async def history(req):
